@@ -1,10 +1,10 @@
 import AppKit
 
 /// A heading row. A view rather than a disabled item, so it reads in full-strength text and never
-/// highlights. Aligned with the titles and key equivalents of the items below it.
+/// highlights. It starts where the checkmarks do, left of the item titles, and ends with the key equivalents.
 public final class MenuHeaderView: NSView {
-    /// Where AppKit starts item titles, and ends key equivalents, in a menu with a checkmark column.
-    private static let titleInset: CGFloat = 30
+    /// Where AppKit starts checkmarks, and ends key equivalents.
+    private static let titleInset: CGFloat = 14
     private static let trailingInset: CGFloat = 16
 
     public init(_ header: MenuHeader) {
@@ -83,8 +83,8 @@ public final class MenuHeaderView: NSView {
     }
 }
 
-/// The break between two apps' sections: a recessed gap with lit rims, so each app's items read as their
-/// own pane of glass. Separators stay for the groups within a section.
+/// The break between two apps' sections: a gap of slightly deeper glass, so each app's items read as their
+/// own pane. Separators stay for the groups within a section.
 final class SectionDividerView: NSView {
     init() {
         super.init(frame: NSRect(x: 0, y: 0, width: 100, height: 15))
@@ -97,10 +97,7 @@ final class SectionDividerView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let gap = NSRect(x: 0, y: bounds.midY.rounded() - 4, width: bounds.width, height: 8)
-        NSColor.black.withAlphaComponent(dark ? 0.16 : 0.055).setFill()
+        NSColor.black.withAlphaComponent(dark ? 0.16 : 0.06).setFill()
         gap.fill()
-        NSColor.white.withAlphaComponent(dark ? 0.07 : 0.55).setFill()
-        NSRect(x: 0, y: gap.maxY, width: gap.width, height: 1).fill()
-        NSRect(x: 0, y: gap.minY - 1, width: gap.width, height: 1).fill()
     }
 }
