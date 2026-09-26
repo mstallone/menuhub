@@ -8,19 +8,21 @@ import OSLog
 /// Apps talk over distributed notifications, which carry no sender identity: any process in the session
 /// could post a fake click. Menu items should do nothing a local process couldn't already ask for.
 @MainActor
-public final class MenuHub: NSObject, NSMenuDelegate {
+public final class MenuHub: NSObject {
     private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "MenuHub", category: "MenuHub")
 
     private let icon: NSImage
     private let content: @MainActor () -> MenuSection
+    private let version: String
     private var mine: Member
     private var others: [Int32: Member] = [:]
     private var statusItem: NSStatusItem?
     private let menu = NSMenu()
+    private var menuDelegate: MenuDelegate?
     private var menuIsOpen = false
     /// False for a moment after launch, while the other apps answer, so an app that is about to be a
     /// guest never flashes its own icon.
-    private var hasHeardFromOthers = false
+    private var isPastStartupGrace = false
     private var workspaceObservation: NSKeyValueObservation?
 
     /// `icon` is a template image, shown when the app has the icon to itself. `content` is asked for the
@@ -29,15 +31,23 @@ public final class MenuHub: NSObject, NSMenuDelegate {
         let info = Bundle.main.infoDictionary ?? [:]
         self.icon = icon
         self.content = content
+        version = info["CFBundleShortVersionString"] as? String ?? ""
         mine = Member(
             pid: ProcessInfo.processInfo.processIdentifier,
             name: info["CFBundleDisplayName"] as? String ?? info["CFBundleName"] as? String ?? ProcessInfo.processInfo.processName,
-            version: info["CFBundleShortVersionString"] as? String ?? "",
             launched: NSRunningApplication.current.launchDate ?? Date(),
             revision: 0, isActive: true, header: nil, items: []
         )
         super.init()
-        menu.delegate = self
+        menuDelegate = MenuDelegate(
+            needsUpdate: { [unowned self] in
+                post(.hubRefresh) // the others answer while the menu opens, and it updates in place
+                update()
+                build()
+            },
+            isOpen: { [unowned self] in menuIsOpen = $0 }
+        )
+        menu.delegate = menuDelegate
 
         let center = DistributedNotificationCenter.default()
         for name in [Notification.Name.hubMember, .hubRefresh, .hubClick, .hubLeave] {
@@ -45,17 +55,18 @@ public final class MenuHub: NSObject, NSMenuDelegate {
         }
         NotificationCenter.default.addObserver(self, selector: #selector(willTerminate),
                                                name: NSApplication.willTerminateNotification, object: nil)
-        // Catches an app that quits without saying so, like after a crash.
-        workspaceObservation = NSWorkspace.shared.observe(\.runningApplications) { [weak self] workspace, _ in
-            let running = Set(workspace.runningApplications.map(\.processIdentifier))
-            Task { @MainActor in self?.forget { !running.contains($0) } }
+        // Catches an app that quits without saying so, like after a crash. NSWorkspace doesn't post
+        // termination notifications for menu-bar apps, but its list of running apps changes; each member's
+        // process is then checked directly, since the list can trail an app that just launched.
+        workspaceObservation = NSWorkspace.shared.observe(\.runningApplications) { [weak self] _, _ in
+            Task { @MainActor in self?.forget { kill($0, 0) != 0 } }
         }
 
         update()
         post(.hubRefresh)
         Task {
             try? await Task.sleep(for: .milliseconds(300))
-            hasHeardFromOthers = true
+            isPastStartupGrace = true
             render()
         }
     }
@@ -122,7 +133,7 @@ public final class MenuHub: NSObject, NSMenuDelegate {
 
     /// Shows or hides this app's status item, and redraws it and any open menu.
     private func render() {
-        guard hasHeardFromOthers else { return }
+        guard isPastStartupGrace else { return }
         let isHost = Member.host(among: [mine] + others.values) == mine.pid
         if isHost, statusItem == nil {
             statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -159,31 +170,24 @@ public final class MenuHub: NSObject, NSMenuDelegate {
 
     // MARK: Menu
 
-    public func menuNeedsUpdate(_ menu: NSMenu) {
-        post(.hubRefresh) // the others answer while the menu opens, and it updates in place
-        update()
-        build()
-    }
-
-    public func menuWillOpen(_ menu: NSMenu) { menuIsOpen = true }
-    public func menuDidClose(_ menu: NSMenu) { menuIsOpen = false }
-
     private var sortedMembers: [Member] {
         ([mine] + others.values).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
     private func build() {
-        Self.populate(menu, with: sortedMembers, target: self)
+        Self.populate(menu, with: sortedMembers, version: version, target: self)
     }
 
-    /// Fills `menu` with the members' sections. On its own, an app gets its section, version and Quit, as
+    /// Fills `menu` with the members' sections. On its own, an app gets its section, `version` and Quit, as
     /// an unshared menu would have. Combined, each app gets a headed section, and a Quit at the bottom.
-    static func populate(_ menu: NSMenu, with members: [Member], target: MenuHub?) {
+    /// Items are enabled explicitly, as their descriptions say, rather than by AppKit's validation.
+    static func populate(_ menu: NSMenu, with members: [Member], version: String, target: MenuHub?) {
         menu.removeAllItems()
+        menu.autoenablesItems = false
         if members.count == 1, let member = members.first {
             add(member, header: member.header, to: menu, target: target)
-            menu.addItem(.separator())
-            menu.addItem(withTitle: "\(member.name) \(member.version)", action: nil, keyEquivalent: "")
+            if menu.items.last?.isSeparatorItem == false { menu.addItem(.separator()) }
+            menu.addItem(withTitle: "\(member.name) \(version)", action: nil, keyEquivalent: "").isEnabled = false
             menu.addItem(withTitle: "Quit \(member.name)", action: #selector(NSApplication.terminate), keyEquivalent: "q")
             return
         }
@@ -212,13 +216,16 @@ public final class MenuHub: NSObject, NSMenuDelegate {
             case .separator:
                 menu.addItem(.separator())
             case .info:
-                menu.addItem(withTitle: item.title, action: nil, keyEquivalent: "").state = item.isOn == true ? .on : .off
+                let row = menu.addItem(withTitle: item.title, action: nil, keyEquivalent: "")
+                row.state = item.isOn == true ? .on : .off
+                row.isEnabled = false
             case .action:
                 let row = menu.addItem(withTitle: item.title, action: #selector(choose), keyEquivalent: item.keyEquivalent)
                 row.target = target
                 row.keyEquivalentModifierMask = NSEvent.ModifierFlags(rawValue: item.modifiers)
                 row.isAlternate = item.isAlternate
                 row.state = item.isOn == true ? .on : .off
+                row.isEnabled = item.isEnabled
                 row.representedObject = Choice(pid: member.pid, revision: member.revision, item: index)
             }
         }
@@ -244,11 +251,25 @@ public final class MenuHub: NSObject, NSMenuDelegate {
     }
 }
 
+/// Keeps the menu delegate methods out of MenuHub's public interface.
+private final class MenuDelegate: NSObject, NSMenuDelegate {
+    private let needsUpdate: @MainActor () -> Void
+    private let isOpen: @MainActor (Bool) -> Void
+
+    init(needsUpdate: @escaping @MainActor () -> Void, isOpen: @escaping @MainActor (Bool) -> Void) {
+        self.needsUpdate = needsUpdate
+        self.isOpen = isOpen
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) { needsUpdate() }
+    func menuWillOpen(_ menu: NSMenu) { isOpen(true) }
+    func menuDidClose(_ menu: NSMenu) { isOpen(false) }
+}
+
 /// What each app shares: who it is, and its section of the menu.
 struct Member: Codable, Equatable {
     let pid: Int32
     let name: String
-    let version: String
     let launched: Date
     var revision: Int
     var isActive: Bool

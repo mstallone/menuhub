@@ -15,12 +15,12 @@ let size = NSSize(width: 460, height: 404)
 let barHeight: CGFloat = 24
 
 @MainActor func sampleMembers() -> [Member] {
-    let mxswipe = Member(pid: 1, name: "MXSwipe", version: "0.2.1", launched: Date(), revision: 0, isActive: true,
+    let mxswipe = Member(pid: 1, name: "MXSwipe", launched: Date(), revision: 0, isActive: true,
                          header: MenuHeader(title: "MX Master 4", detail: .battery(83)), items: [
                              .action("Turn Gestures Off") {}, .separator,
                              .action("Open at Login", isOn: true) {}, .action("Check for Updates…") {},
                          ])
-    let retinashot = Member(pid: 2, name: "RetinaShot", version: "1.2.1", launched: Date(), revision: 0, isActive: true,
+    let retinashot = Member(pid: 2, name: "RetinaShot", launched: Date(), revision: 0, isActive: true,
                             header: nil, items: [
                                 .action("Capture Selection", key: "4", modifiers: [.shift, .command]) {},
                                 .action("Capture Window") {}, .separator,
@@ -78,10 +78,7 @@ final class BackdropView: NSView {
     backdrop.orderFrontRegardless()
 
     nonisolated(unsafe) let menu = NSMenu()
-    MenuHub.populate(menu, with: sampleMembers(), target: nil)
-    // Without an app to handle them, actions would draw disabled; enable them, and leave information gray.
-    menu.autoenablesItems = false
-    for item in menu.items { item.isEnabled = item.action != nil }
+    MenuHub.populate(menu, with: sampleMembers(), version: "", target: nil)
     let timer = Timer(timeInterval: 0.6, repeats: false) { _ in
         MainActor.assumeIsolated {
             let pid = getpid()

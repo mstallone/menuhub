@@ -87,9 +87,10 @@ final class MenuHeaderView: NSView {
         return label
     }
 
-    /// The system's battery glyphs come in quarters; round to the nearest.
+    /// The system's battery glyphs come in quarters; round to the nearest. The reading may come from another
+    /// process, so it's clamped rather than trusted.
     private static func batteryImage(_ percent: Int, pointSize: CGFloat) -> NSImage {
-        let quarter = min(4, (percent + 12) / 25) * 25
+        let quarter = (min(max(percent, 0), 100) + 12) / 25 * 25
         return NSImage(systemSymbolName: "battery.\(quarter)percent", accessibilityDescription: nil)!
             .withSymbolConfiguration(.init(pointSize: pointSize, weight: .regular))!
     }

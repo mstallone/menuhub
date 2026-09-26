@@ -3,7 +3,7 @@ import XCTest
 
 final class MenuHubTests: XCTestCase {
     private func member(pid: Int32, launched: TimeInterval, items: [MenuItem] = []) -> Member {
-        Member(pid: pid, name: "App \(pid)", version: "1.0", launched: Date(timeIntervalSinceReferenceDate: launched),
+        Member(pid: pid, name: "App \(pid)", launched: Date(timeIntervalSinceReferenceDate: launched),
                revision: 0, isActive: true, header: MenuHeader(title: "Mouse", detail: .battery(83)), items: items)
     }
 
@@ -45,8 +45,9 @@ final class MenuHubTests: XCTestCase {
 @MainActor
 final class MenuLayoutTests: XCTestCase {
     private func member(_ name: String, pid: Int32, header: MenuHeader? = nil) -> Member {
-        Member(pid: pid, name: name, version: "1.2", launched: Date(), revision: 0, isActive: true, header: header,
-               items: [.action("Turn Gestures Off") {}, .separator, .info("Screen Recording Allowed", isOn: true)])
+        Member(pid: pid, name: name, launched: Date(), revision: 0, isActive: true, header: header,
+               items: [.action("Turn Gestures Off") {}, .separator, .info("Screen Recording Allowed", isOn: true),
+                       .action("Check for Updates…", isEnabled: false) {}])
     }
 
     private func titles(_ menu: NSMenu) -> [String] {
@@ -61,18 +62,33 @@ final class MenuLayoutTests: XCTestCase {
 
     func testAnAppOnItsOwnKeepsItsUsualMenu() {
         let menu = NSMenu()
-        MenuHub.populate(menu, with: [member("MXSwipe", pid: 1)], target: nil)
-        XCTAssertEqual(titles(menu), ["Turn Gestures Off", "—", "Screen Recording Allowed", "—", "MXSwipe 1.2", "Quit MXSwipe"])
+        MenuHub.populate(menu, with: [member("MXSwipe", pid: 1)], version: "1.2", target: nil)
+        XCTAssertEqual(titles(menu), [
+            "Turn Gestures Off", "—", "Screen Recording Allowed", "Check for Updates…", "—", "MXSwipe 1.2", "Quit MXSwipe",
+        ])
         XCTAssertEqual(menu.items.last?.keyEquivalent, "q")
+    }
+
+    func testItemsAreEnabledAsDescribed() {
+        let menu = NSMenu()
+        MenuHub.populate(menu, with: [member("MXSwipe", pid: 1)], version: "1.2", target: nil)
+        XCTAssertFalse(menu.autoenablesItems)
+        XCTAssertEqual(menu.items.filter { !$0.isSeparatorItem }.map(\.isEnabled), [true, false, false, false, true])
+    }
+
+    func testAnOutOfRangeBatteryReadingIsClamped() {
+        for percent in [-500, -1, 0, 100, 101, 5000] {
+            _ = MenuHeaderView(MenuHeader(title: "MX Master 4", detail: .battery(percent)))
+        }
     }
 
     func testCombinedMenusHeadEachSectionAndQuitEachApp() {
         let menu = NSMenu()
         let members = [member("MXSwipe", pid: 1, header: MenuHeader(title: "MX Master 4")), member("RetinaShot", pid: 2)]
-        MenuHub.populate(menu, with: members, target: nil)
+        MenuHub.populate(menu, with: members, version: "1.2", target: nil)
         XCTAssertEqual(titles(menu), [
-            "[header]", "Turn Gestures Off", "—", "Screen Recording Allowed", "===",
-            "[header]", "Turn Gestures Off", "—", "Screen Recording Allowed", "===",
+            "[header]", "Turn Gestures Off", "—", "Screen Recording Allowed", "Check for Updates…", "===",
+            "[header]", "Turn Gestures Off", "—", "Screen Recording Allowed", "Check for Updates…", "===",
             "Quit MXSwipe", "Quit RetinaShot",
         ])
     }

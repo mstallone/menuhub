@@ -28,8 +28,8 @@ menu = MenuHub(icon: NSImage(systemSymbolName: "computermouse", accessibilityDes
 ```
 
 The section is read again whenever the menu opens; call `update()` when something it shows changes in
-the meantime. The hub adds the app's version and Quit item. Items can be actions (with an optional key
-equivalent and checkmark), Option-key alternates, lines of information, and separators. `isActive: false`
+the meantime. The hub adds the app's Quit item, and its version while the app has the menu to itself. Items can be actions (with an optional key
+equivalent, checkmark, or disabled state), Option-key alternates, lines of information, and separators. `isActive: false`
 fades the icon.
 
 ## How it works
@@ -50,6 +50,7 @@ fades the icon.
 
 Distributed notifications carry no sender identity, so any process in the login session could post a
 fake description or click. Menu items should do nothing a local process couldn't already ask for.
+Sandboxed apps can't attach data to distributed notifications, so apps using MenuHub can't be sandboxed.
 
 ## Building
 
