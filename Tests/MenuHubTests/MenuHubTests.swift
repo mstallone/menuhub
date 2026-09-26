@@ -51,7 +51,11 @@ final class MenuLayoutTests: XCTestCase {
 
     private func titles(_ menu: NSMenu) -> [String] {
         menu.items.map {
-            $0.isSeparatorItem ? "—" : $0.view is MenuHeaderView ? "[header]" : $0.view is SectionDividerView ? "===" : $0.title
+            switch $0.view {
+            case is MenuHeaderView: "[header]"
+            case is SectionDividerView: "==="
+            default: $0.isSeparatorItem ? "—" : $0.title
+            }
         }
     }
 

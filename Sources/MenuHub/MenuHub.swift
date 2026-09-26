@@ -197,6 +197,7 @@ public final class MenuHub: NSObject, NSMenuDelegate {
             let quit = menu.addItem(withTitle: "Quit \(member.name)", action: #selector(choose), keyEquivalent: "")
             quit.target = target
             quit.representedObject = Choice(pid: member.pid, revision: member.revision, item: nil)
+            quit.view = FlushMenuRowView(title: quit.title)
         }
     }
 

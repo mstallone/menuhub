@@ -19,9 +19,9 @@ public final class MenuHeaderView: NSView {
 
         switch header.detail {
         case let .battery(percent):
-            let text = label("\(percent)%", font: .systemFont(ofSize: size), color: .secondaryLabelColor)
+            let text = label("\(percent)%", font: .systemFont(ofSize: size), color: .tertiaryLabelColor)
             let glyph = NSImageView(image: Self.batteryImage(percent, pointSize: size))
-            glyph.contentTintColor = percent <= 10 ? .systemRed : .secondaryLabelColor
+            glyph.contentTintColor = percent <= 10 ? .systemRed : .tertiaryLabelColor
             glyph.translatesAutoresizingMaskIntoConstraints = false
             addSubview(glyph)
             NSLayoutConstraint.activate([
@@ -33,7 +33,7 @@ public final class MenuHeaderView: NSView {
             ])
             accessibility += ", battery \(percent)%"
         case let .status(status):
-            let text = label(status, font: .systemFont(ofSize: size), color: .secondaryLabelColor)
+            let text = label(status, font: .systemFont(ofSize: size), color: .tertiaryLabelColor)
             NSLayoutConstraint.activate([
                 text.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.trailingInset),
                 text.firstBaselineAnchor.constraint(equalTo: titleLabel.firstBaselineAnchor),
@@ -64,6 +64,11 @@ public final class MenuHeaderView: NSView {
     }
 
     required init?(coder: NSCoder) { nil }
+
+    override public func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        appearance = plainAppearance(matching: superview)
+    }
 
     private func label(_ text: String, font: NSFont, color: NSColor) -> NSTextField {
         let label = NSTextField(wrappingLabelWithString: text)
@@ -100,4 +105,82 @@ final class SectionDividerView: NSView {
         NSColor.black.withAlphaComponent(dark ? 0.16 : 0.06).setFill()
         gap.fill()
     }
+}
+
+/// Draws a menu item so its title starts at the checkmark column, like the headers; native items always
+/// leave room for a checkmark. It highlights with the same selection material native items use, and a
+/// click sends the item's action. Return does not: AppKit ignores it on items with views.
+final class FlushMenuRowView: NSView {
+    private let selection = NSVisualEffectView()
+    private let label: NSTextField
+
+    init(title: String) {
+        label = NSTextField(labelWithString: title)
+        super.init(frame: NSRect(x: 0, y: 0, width: 100, height: 24))
+        autoresizingMask = .width
+
+        selection.material = .selection
+        selection.state = .active
+        selection.isEmphasized = true
+        selection.wantsLayer = true
+        selection.layer?.cornerRadius = 6
+        selection.layer?.cornerCurve = .continuous
+        selection.isHidden = true
+        label.font = .menuFont(ofSize: 0)
+        for view in [selection, label] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(view)
+        }
+        NSLayoutConstraint.activate([
+            selection.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 5),
+            selection.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -5),
+            selection.topAnchor.constraint(equalTo: topAnchor),
+            selection.bottomAnchor.constraint(equalTo: bottomAnchor),
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -16),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+        frame.size.width = fittingSize.width
+        setAccessibilityElement(true)
+        setAccessibilityRole(.menuItem)
+        setAccessibilityLabel(title)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        label.appearance = plainAppearance(matching: self)
+    }
+
+    /// The menu redraws the row when its highlight changes.
+    override func viewWillDraw() {
+        let highlighted = enclosingMenuItem?.isHighlighted == true
+        selection.isHidden = !highlighted
+        label.textColor = highlighted ? .selectedMenuItemTextColor : .labelColor
+        super.viewWillDraw()
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        choose()
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        choose()
+        return true
+    }
+
+    private func choose() {
+        guard let item = enclosingMenuItem, let menu = item.menu else { return }
+        menu.cancelTracking()
+        menu.performActionForItem(at: menu.index(of: item))
+    }
+}
+
+/// Menus resolve colors in a vibrant appearance, meant for text AppKit draws with a vibrancy blend. A custom
+/// view doesn't get the blend, so its colors come out washed out; in the plain light or dark appearance
+/// they match native item text.
+@MainActor private func plainAppearance(matching view: NSView?) -> NSAppearance? {
+    let dark = view?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+    return NSAppearance(named: dark ? .darkAqua : .aqua)
 }
