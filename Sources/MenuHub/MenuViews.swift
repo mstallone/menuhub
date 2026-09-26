@@ -82,3 +82,20 @@ public final class MenuHeaderView: NSView {
             .withSymbolConfiguration(.init(pointSize: pointSize, weight: .regular))!
     }
 }
+
+/// The line between two apps' sections: full width and darker than a separator, which stays for the
+/// groups within a section.
+final class SectionDividerView: NSView {
+    init() {
+        super.init(frame: NSRect(x: 0, y: 0, width: 100, height: 15))
+        autoresizingMask = .width
+        setAccessibilityElement(false)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.secondaryLabelColor.setFill()
+        NSRect(x: 12, y: (bounds.midY - 0.5).rounded(), width: bounds.width - 24, height: 1).fill()
+    }
+}

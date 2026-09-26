@@ -50,7 +50,9 @@ final class MenuLayoutTests: XCTestCase {
     }
 
     private func titles(_ menu: NSMenu) -> [String] {
-        menu.items.map { $0.isSeparatorItem ? "—" : $0.view is MenuHeaderView ? "[header]" : $0.title }
+        menu.items.map {
+            $0.isSeparatorItem ? "—" : $0.view is MenuHeaderView ? "[header]" : $0.view is SectionDividerView ? "===" : $0.title
+        }
     }
 
     func testAnAppOnItsOwnKeepsItsUsualMenu() {
@@ -65,8 +67,8 @@ final class MenuLayoutTests: XCTestCase {
         let members = [member("MXSwipe", pid: 1, header: MenuHeader(title: "MX Master 4")), member("RetinaShot", pid: 2)]
         MenuHub.populate(menu, with: members, mine: 1, target: nil)
         XCTAssertEqual(titles(menu), [
-            "[header]", "Turn Gestures Off", "—", "Screen Recording Allowed", "—",
-            "[header]", "Turn Gestures Off", "—", "Screen Recording Allowed", "—",
+            "[header]", "Turn Gestures Off", "—", "Screen Recording Allowed", "===",
+            "[header]", "Turn Gestures Off", "—", "Screen Recording Allowed", "===",
             "Quit MXSwipe", "Quit RetinaShot",
         ])
     }

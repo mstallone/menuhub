@@ -187,11 +187,12 @@ public final class MenuHub: NSObject, NSMenuDelegate {
             menu.addItem(withTitle: "Quit \(member.name)", action: #selector(NSApplication.terminate), keyEquivalent: "q")
             return
         }
-        for (index, member) in members.enumerated() {
-            if index > 0 { menu.addItem(.separator()) }
+        for member in members {
             add(member, header: member.header ?? MenuHeader(title: member.name), to: menu, target: target)
+            let divider = NSMenuItem()
+            divider.view = SectionDividerView()
+            menu.addItem(divider)
         }
-        menu.addItem(.separator())
         for member in members {
             let quit = menu.addItem(withTitle: "Quit \(member.name)", action: #selector(choose), keyEquivalent: "")
             quit.target = target
