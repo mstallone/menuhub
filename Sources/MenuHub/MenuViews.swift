@@ -83,8 +83,8 @@ public final class MenuHeaderView: NSView {
     }
 }
 
-/// The line between two apps' sections: edge to edge and darker than a separator, which stays for the
-/// groups within a section.
+/// The break between two apps' sections: a recessed gap with lit rims, so each app's items read as their
+/// own pane of glass. Separators stay for the groups within a section.
 final class SectionDividerView: NSView {
     init() {
         super.init(frame: NSRect(x: 0, y: 0, width: 100, height: 15))
@@ -95,7 +95,12 @@ final class SectionDividerView: NSView {
     required init?(coder: NSCoder) { nil }
 
     override func draw(_ dirtyRect: NSRect) {
-        NSColor.secondaryLabelColor.setFill()
-        NSRect(x: 0, y: (bounds.midY - 0.5).rounded(), width: bounds.width, height: 1).fill()
+        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let gap = NSRect(x: 0, y: bounds.midY.rounded() - 4, width: bounds.width, height: 8)
+        NSColor.black.withAlphaComponent(dark ? 0.16 : 0.055).setFill()
+        gap.fill()
+        NSColor.white.withAlphaComponent(dark ? 0.07 : 0.55).setFill()
+        NSRect(x: 0, y: gap.maxY, width: gap.width, height: 1).fill()
+        NSRect(x: 0, y: gap.minY - 1, width: gap.width, height: 1).fill()
     }
 }
