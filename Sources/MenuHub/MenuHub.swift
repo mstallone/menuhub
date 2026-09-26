@@ -92,7 +92,7 @@ public final class MenuHub: NSObject, NSMenuDelegate {
             update()
         case .hubClick:
             guard info["target"] as? Int32 == mine.pid else { return }
-            if info["quit"] as? Bool == true { NSApp.terminate(nil) }
+            if info["quit"] as? Bool == true { return NSApp.terminate(nil) }
             // A click on a menu drawn from an earlier description is dropped rather than misrouted.
             guard info["revision"] as? Int == mine.revision, let index = info["item"] as? Int,
                   mine.items.indices.contains(index) else { return }
@@ -173,12 +173,12 @@ public final class MenuHub: NSObject, NSMenuDelegate {
     }
 
     private func build() {
-        Self.populate(menu, with: sortedMembers, mine: mine.pid, target: self)
+        Self.populate(menu, with: sortedMembers, target: self)
     }
 
     /// Fills `menu` with the members' sections. On its own, an app gets its section, version and Quit, as
     /// an unshared menu would have. Combined, each app gets a headed section, and a Quit at the bottom.
-    static func populate(_ menu: NSMenu, with members: [Member], mine: Int32, target: MenuHub?) {
+    static func populate(_ menu: NSMenu, with members: [Member], target: MenuHub?) {
         menu.removeAllItems()
         if members.count == 1, let member = members.first {
             add(member, header: member.header, to: menu, target: target)
@@ -265,13 +265,15 @@ struct Member: Codable, Equatable {
     }
 }
 
+/// Every message carries the sender's `pid`. The 1 is the protocol version: changing a message or `Member`
+/// changes it, so apps built against incompatible versions ignore each other instead of misreading.
 private extension Notification.Name {
     /// A member's description: `member`, JSON-encoded `Member`.
-    static let hubMember = Notification.Name("com.mattstallone.menuhub.member")
+    static let hubMember = Notification.Name("com.mattstallone.menuhub.1.member")
     /// Asks every member to send its description again.
-    static let hubRefresh = Notification.Name("com.mattstallone.menuhub.refresh")
+    static let hubRefresh = Notification.Name("com.mattstallone.menuhub.1.refresh")
     /// A chosen item, for `target`: `revision` and `item`, or `quit`.
-    static let hubClick = Notification.Name("com.mattstallone.menuhub.click")
+    static let hubClick = Notification.Name("com.mattstallone.menuhub.1.click")
     /// The sender is quitting.
-    static let hubLeave = Notification.Name("com.mattstallone.menuhub.leave")
+    static let hubLeave = Notification.Name("com.mattstallone.menuhub.1.leave")
 }

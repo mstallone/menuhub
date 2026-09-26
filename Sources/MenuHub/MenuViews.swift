@@ -1,18 +1,25 @@
 import AppKit
 
+/// Where AppKit draws a menu item's parts, for the rows drawn here to line up with native ones.
+enum MenuMetrics {
+    /// Where checkmarks start.
+    static let leading: CGFloat = 14
+    /// Where key equivalents end.
+    static let trailing: CGFloat = 16
+    /// The selection highlight's inset from the menu's sides.
+    static let highlightInset: CGFloat = 5
+    static let rowHeight: CGFloat = 24
+}
+
 /// A heading row. A view rather than a disabled item, so it reads in full-strength text and never
 /// highlights. It starts where the checkmarks do, left of the item titles, and ends with the key equivalents.
-public final class MenuHeaderView: NSView {
-    /// Where AppKit starts checkmarks, and ends key equivalents.
-    private static let titleInset: CGFloat = 14
-    private static let trailingInset: CGFloat = 16
-
-    public init(_ header: MenuHeader) {
+final class MenuHeaderView: NSView {
+    init(_ header: MenuHeader) {
         let title = header.title
         super.init(frame: .zero)
         let size = NSFont.menuFont(ofSize: 0).pointSize
         let titleLabel = label(title, font: .systemFont(ofSize: size, weight: .semibold), color: .labelColor)
-        titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.titleInset).isActive = true
+        titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: MenuMetrics.leading).isActive = true
         titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 3).isActive = true
         var bottom = titleLabel.bottomAnchor
         var accessibility = title
@@ -25,7 +32,7 @@ public final class MenuHeaderView: NSView {
             glyph.translatesAutoresizingMaskIntoConstraints = false
             addSubview(glyph)
             NSLayoutConstraint.activate([
-                glyph.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.trailingInset),
+                glyph.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -MenuMetrics.trailing),
                 glyph.centerYAnchor.constraint(equalTo: text.centerYAnchor),
                 text.trailingAnchor.constraint(equalTo: glyph.leadingAnchor, constant: -5),
                 text.firstBaselineAnchor.constraint(equalTo: titleLabel.firstBaselineAnchor),
@@ -35,7 +42,7 @@ public final class MenuHeaderView: NSView {
         case let .status(status):
             let text = label(status, font: .systemFont(ofSize: size), color: .tertiaryLabelColor)
             NSLayoutConstraint.activate([
-                text.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.trailingInset),
+                text.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -MenuMetrics.trailing),
                 text.firstBaselineAnchor.constraint(equalTo: titleLabel.firstBaselineAnchor),
                 text.leadingAnchor.constraint(greaterThanOrEqualTo: titleLabel.trailingAnchor, constant: 16),
             ])
@@ -45,13 +52,13 @@ public final class MenuHeaderView: NSView {
             text.preferredMaxLayoutWidth = 170
             NSLayoutConstraint.activate([
                 text.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
-                text.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -Self.trailingInset),
+                text.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -MenuMetrics.trailing),
                 text.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 2),
             ])
             bottom = text.bottomAnchor
             accessibility += ", \(message)"
         case nil:
-            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -Self.trailingInset).isActive = true
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -MenuMetrics.trailing).isActive = true
         }
         bottom.constraint(equalTo: bottomAnchor, constant: -4).isActive = true
 
@@ -65,7 +72,7 @@ public final class MenuHeaderView: NSView {
 
     required init?(coder: NSCoder) { nil }
 
-    override public func viewDidMoveToWindow() {
+    override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         appearance = plainAppearance(matching: superview)
     }
@@ -116,7 +123,7 @@ final class FlushMenuRowView: NSView {
 
     init(title: String) {
         label = NSTextField(labelWithString: title)
-        super.init(frame: NSRect(x: 0, y: 0, width: 100, height: 24))
+        super.init(frame: NSRect(x: 0, y: 0, width: 100, height: MenuMetrics.rowHeight))
         autoresizingMask = .width
 
         selection.material = .selection
@@ -132,12 +139,12 @@ final class FlushMenuRowView: NSView {
             addSubview(view)
         }
         NSLayoutConstraint.activate([
-            selection.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 5),
-            selection.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -5),
+            selection.leadingAnchor.constraint(equalTo: leadingAnchor, constant: MenuMetrics.highlightInset),
+            selection.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -MenuMetrics.highlightInset),
             selection.topAnchor.constraint(equalTo: topAnchor),
             selection.bottomAnchor.constraint(equalTo: bottomAnchor),
-            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
-            label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -16),
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: MenuMetrics.leading),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -MenuMetrics.trailing),
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
         frame.size.width = fittingSize.width

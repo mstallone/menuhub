@@ -11,7 +11,7 @@ typealias CreateImageFromArray = @convention(c) (CGRect, CFArray, CGWindowImageO
 let createImage = unsafeBitCast(dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGWindowListCreateImageFromArray")!,
                                 to: CreateImageFromArray.self)
 
-let size = NSSize(width: 460, height: 470)
+let size = NSSize(width: 460, height: 404)
 let barHeight: CGFloat = 24
 
 @MainActor func sampleMembers() -> [Member] {
@@ -35,12 +35,6 @@ let barHeight: CGFloat = 24
 /// usual system items and Apple's 9:41.
 final class BackdropView: NSView {
     let iconFrame = NSRect(x: 136, y: size.height - barHeight + 2, width: 32, height: barHeight - 4)
-    let symbol: String
-    init(symbol: String) {
-        self.symbol = symbol
-        super.init(frame: NSRect(origin: .zero, size: size))
-    }
-    required init?(coder: NSCoder) { nil }
 
     override func draw(_ dirtyRect: NSRect) {
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
@@ -50,7 +44,7 @@ final class BackdropView: NSView {
         NSRect(x: 0, y: size.height - barHeight, width: size.width, height: barHeight).fill()
         NSColor.labelColor.withAlphaComponent(0.12).setFill()
         NSBezierPath(roundedRect: iconFrame, xRadius: 5, yRadius: 5).fill()
-        drawSymbol(symbol, centeredAt: iconFrame.midX)
+        drawSymbol("square.grid.2x2", centeredAt: iconFrame.midX)
         var x = iconFrame.maxX + 20
         for name in ["wifi", "magnifyingglass", "switch.2"] {
             drawSymbol(name, centeredAt: x)
@@ -74,18 +68,20 @@ final class BackdropView: NSView {
     }
 }
 
-@MainActor func render(_ appearance: NSAppearance.Name, symbol: String, to url: URL) {
+@MainActor func render(_ appearance: NSAppearance.Name, to url: URL) {
     NSApp.appearance = NSAppearance(named: appearance)
     let screen = NSScreen.main!.frame
     let frame = NSRect(x: screen.minX + 120, y: screen.maxY - 120 - size.height, width: size.width, height: size.height)
     let backdrop = NSWindow(contentRect: frame, styleMask: .borderless, backing: .buffered, defer: false)
-    let view = BackdropView(symbol: symbol)
+    let view = BackdropView(frame: NSRect(origin: .zero, size: size))
     backdrop.contentView = view
     backdrop.orderFrontRegardless()
 
     nonisolated(unsafe) let menu = NSMenu()
+    MenuHub.populate(menu, with: sampleMembers(), target: nil)
+    // Without an app to handle them, actions would draw disabled; enable them, and leave information gray.
     menu.autoenablesItems = false
-    MenuHub.populate(menu, with: sampleMembers(), mine: 1, target: nil)
+    for item in menu.items { item.isEnabled = item.action != nil }
     let timer = Timer(timeInterval: 0.6, repeats: false) { _ in
         MainActor.assumeIsolated {
             let pid = getpid()
@@ -126,12 +122,11 @@ enum MakePreview {
         NSApplication.shared.setActivationPolicy(.accessory)
         let arguments = CommandLine.arguments
         let directory = URL(fileURLWithPath: arguments[1])
-        let symbol = ProcessInfo.processInfo.environment["SYMBOL"] ?? "square.grid.2x2"
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         // One appearance per process: a second menu in the same process never tracks.
         if arguments.count > 2 {
             let dark = arguments[2] == "dark"
-            render(dark ? .darkAqua : .aqua, symbol: symbol, to: directory.appendingPathComponent(dark ? "menu-dark.png" : "menu-light.png"))
+            render(dark ? .darkAqua : .aqua, to: directory.appendingPathComponent(dark ? "menu-dark.png" : "menu-light.png"))
         } else {
             for mode in ["light", "dark"] {
                 let child = Process()

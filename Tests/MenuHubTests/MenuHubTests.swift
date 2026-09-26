@@ -61,7 +61,7 @@ final class MenuLayoutTests: XCTestCase {
 
     func testAnAppOnItsOwnKeepsItsUsualMenu() {
         let menu = NSMenu()
-        MenuHub.populate(menu, with: [member("MXSwipe", pid: 1)], mine: 1, target: nil)
+        MenuHub.populate(menu, with: [member("MXSwipe", pid: 1)], target: nil)
         XCTAssertEqual(titles(menu), ["Turn Gestures Off", "—", "Screen Recording Allowed", "—", "MXSwipe 1.2", "Quit MXSwipe"])
         XCTAssertEqual(menu.items.last?.keyEquivalent, "q")
     }
@@ -69,7 +69,7 @@ final class MenuLayoutTests: XCTestCase {
     func testCombinedMenusHeadEachSectionAndQuitEachApp() {
         let menu = NSMenu()
         let members = [member("MXSwipe", pid: 1, header: MenuHeader(title: "MX Master 4")), member("RetinaShot", pid: 2)]
-        MenuHub.populate(menu, with: members, mine: 1, target: nil)
+        MenuHub.populate(menu, with: members, target: nil)
         XCTAssertEqual(titles(menu), [
             "[header]", "Turn Gestures Off", "—", "Screen Recording Allowed", "===",
             "[header]", "Turn Gestures Off", "—", "Screen Recording Allowed", "===",
