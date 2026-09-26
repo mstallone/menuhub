@@ -83,7 +83,7 @@ public final class MenuHeaderView: NSView {
     }
 }
 
-/// The line between two apps' sections: full width and darker than a separator, which stays for the
+/// The line between two apps' sections: edge to edge and darker than a separator, which stays for the
 /// groups within a section.
 final class SectionDividerView: NSView {
     init() {
@@ -96,6 +96,6 @@ final class SectionDividerView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         NSColor.secondaryLabelColor.setFill()
-        NSRect(x: 12, y: (bounds.midY - 0.5).rounded(), width: bounds.width - 24, height: 1).fill()
+        NSRect(x: 0, y: (bounds.midY - 0.5).rounded(), width: bounds.width, height: 1).fill()
     }
 }
