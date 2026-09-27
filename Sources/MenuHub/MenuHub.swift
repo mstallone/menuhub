@@ -18,6 +18,7 @@ public final class MenuHub: NSObject {
 
     private let symbol: String
     private let content: @MainActor () -> MenuSection
+    private let updater: (any Updater)?
     private let version: String
     private var mine: Member
     private var others: [Int32: Member] = [:]
@@ -29,6 +30,8 @@ public final class MenuHub: NSObject {
     /// guest never flashes its own icon.
     private var isPastStartupGrace = false
     private var workspaceObservation: NSKeyValueObservation?
+    /// The Check for Updates this app started in a combined menu, while it waits for the answers.
+    private var updateRound: UpdateRound?
 
     /// `symbol` names the SF Symbol shown when the app has the icon to itself. `content` is asked for the
     /// app's section whenever it may be shown; call `update()` when something in it changes.
@@ -36,15 +39,19 @@ public final class MenuHub: NSObject {
     /// With `yieldsIcon`, the app shows the icon only when no app that doesn't yield is running. An app whose
     /// global hot keys must work while the menu is open should yield: a process tracking a menu gets its hot
     /// keys only after the menu closes.
-    public init(symbol: String, yieldsIcon: Bool = false, content: @escaping @MainActor () -> MenuSection) {
+    ///
+    /// `updater` adds Check for Updates…, shared with the other apps that have one.
+    public init(symbol: String, yieldsIcon: Bool = false, updater: (any Updater)? = nil,
+                content: @escaping @MainActor () -> MenuSection) {
         let info = Bundle.main.infoDictionary ?? [:]
         self.symbol = symbol
         self.content = content
+        self.updater = updater
         version = info["CFBundleShortVersionString"] as? String ?? ""
         mine = Member(
             pid: ProcessInfo.processInfo.processIdentifier,
             name: info["CFBundleDisplayName"] as? String ?? info["CFBundleName"] as? String ?? ProcessInfo.processInfo.processName,
-            launched: NSRunningApplication.current.launchDate ?? Date(), yieldsIcon: yieldsIcon,
+            launched: NSRunningApplication.current.launchDate ?? Date(), yieldsIcon: yieldsIcon, checksForUpdates: updater != nil,
             revision: 0, isActive: true, symbol: nil, toolTip: nil, header: nil, items: []
         )
         super.init()
@@ -62,7 +69,7 @@ public final class MenuHub: NSObject {
         menu.delegate = menuDelegate
 
         let center = DistributedNotificationCenter.default()
-        for name in [Notification.Name.hubMember, .hubRefresh, .hubClick, .hubLeave] {
+        for name in [Notification.Name.hubMember, .hubRefresh, .hubClick, .hubLeave, .hubCheckForUpdates, .hubUpdateResult] {
             center.addObserver(self, selector: #selector(received), name: name, object: nil, suspensionBehavior: .deliverImmediately)
         }
         NotificationCenter.default.addObserver(self, selector: #selector(willTerminate),
@@ -123,6 +130,17 @@ public final class MenuHub: NSObject {
             MenuItem.at(path, in: mine.items)?.action.perform()
         case .hubLeave:
             forget { $0 == sender }
+        case .hubCheckForUpdates:
+            guard let updater, let round = info["check"] as? String else { return }
+            Task {
+                let result = await updater.checkForUpdatesQuietly()
+                post(.hubUpdateResult, ["target": sender, "check": round, "version": version,
+                                        "result": try! JSONEncoder().encode(result)])
+            }
+        case .hubUpdateResult:
+            guard info["target"] as? Int32 == mine.pid, let round = info["check"] as? String, let data = info["result"] as? Data,
+                  let result = try? JSONDecoder().decode(UpdateCheckResult.self, from: data) else { return }
+            record(result, version: info["version"] as? String ?? "", from: sender, in: round)
         default:
             break
         }
@@ -138,8 +156,49 @@ public final class MenuHub: NSObject {
         for pid in leaving {
             let name = others.removeValue(forKey: pid)?.name ?? ""
             Self.logger.notice("\(name, privacy: .public) left")
+            updateRound?.drop(pid)
         }
+        if let round = updateRound, round.isComplete { finish(round.id) }
         render()
+    }
+
+    // MARK: Updates
+
+    /// On its own, or when no other app has an updater, the app runs its usual check. Otherwise every app
+    /// with an updater checks quietly, and what they found is summed up once they've all answered.
+    @objc private func checkForUpdates() {
+        let apps = ([mine] + others.values).filter { $0.checksForUpdates == true }
+        if apps.map(\.pid) == [mine.pid] {
+            updater?.checkForUpdates()
+            return
+        }
+        let round = UpdateRound(apps: Dictionary(uniqueKeysWithValues: apps.map { ($0.pid, $0.name) }))
+        updateRound = round
+        post(.hubCheckForUpdates, ["check": round.id])
+        if let updater {
+            Task { record(await updater.checkForUpdatesQuietly(), version: version, from: mine.pid, in: round.id) }
+        }
+        Task {
+            try? await Task.sleep(for: .seconds(30))
+            finish(round.id)
+        }
+    }
+
+    private func record(_ result: UpdateCheckResult, version: String, from pid: Int32, in round: String) {
+        guard updateRound?.id == round else { return }
+        updateRound?.record(result, version: version, from: pid)
+        if updateRound?.isComplete == true { finish(round) }
+    }
+
+    private func finish(_ round: String) {
+        guard let finished = updateRound, finished.id == round else { return }
+        updateRound = nil
+        guard let summary = finished.summary else { return }
+        NSApp.activate()
+        let alert = NSAlert()
+        alert.messageText = summary.title
+        alert.informativeText = summary.text
+        alert.runModal()
     }
 
     // MARK: Icon
@@ -192,19 +251,27 @@ public final class MenuHub: NSObject {
     }
 
     private func build() {
-        Self.populate(menu, with: sortedMembers, version: version, target: self)
+        let canCheck = others.isEmpty ? updater?.canCheckForUpdates ?? false : updateRound == nil
+        Self.populate(menu, with: sortedMembers, version: version, canCheckForUpdates: canCheck, target: self)
     }
 
-    /// Fills `menu` with the members' sections. On its own, an app gets its section, `version` and Quit, as
-    /// an unshared menu would have. Combined, each app gets a headed section, and a Quit at the bottom.
-    /// Items are enabled explicitly, as their descriptions say, rather than by AppKit's validation.
-    static func populate(_ menu: NSMenu, with members: [Member], version: String, target: MenuHub?) {
+    /// Fills `menu` with the members' sections. On its own, an app gets its section, `version`, Check for
+    /// Updates… if it has an updater, and Quit, as an unshared menu would have. Combined, each app gets a
+    /// headed section, and at the bottom one Check for Updates… and a Quit for each app. Items are enabled
+    /// explicitly, as their descriptions say, rather than by AppKit's validation.
+    static func populate(_ menu: NSMenu, with members: [Member], version: String, canCheckForUpdates: Bool,
+                         target: MenuHub?) {
         menu.removeAllItems()
         menu.autoenablesItems = false
         if members.count == 1, let member = members.first {
             add(member, header: member.header, to: menu, target: target)
             if menu.items.last?.isSeparatorItem == false { menu.addItem(.separator()) }
             menu.addItem(withTitle: "\(member.name) \(version)", action: nil, keyEquivalent: "").isEnabled = false
+            if member.checksForUpdates == true {
+                let check = menu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
+                check.target = target
+                check.isEnabled = canCheckForUpdates
+            }
             menu.addItem(withTitle: "Quit \(member.name)", action: #selector(NSApplication.terminate), keyEquivalent: "q")
             return
         }
@@ -213,6 +280,12 @@ public final class MenuHub: NSObject {
             let divider = NSMenuItem()
             divider.view = SectionDividerView()
             menu.addItem(divider)
+        }
+        if members.contains(where: { $0.checksForUpdates == true }) {
+            let check = menu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
+            check.target = target
+            check.isEnabled = canCheckForUpdates
+            check.view = FlushMenuRowView(title: check.title)
         }
         for member in members {
             let quit = menu.addItem(withTitle: "Quit \(member.name)", action: #selector(choose), keyEquivalent: "")
@@ -304,6 +377,8 @@ struct Member: Codable, Equatable {
     let name: String
     let launched: Date
     let yieldsIcon: Bool
+    /// Whether the app has an updater. Nil from apps built with MenuHub 0.2, which don't share update checks.
+    var checksForUpdates: Bool?
     var revision: Int
     var isActive: Bool
     var symbol: String?
@@ -324,7 +399,8 @@ struct Member: Codable, Equatable {
 }
 
 /// Every message carries the sender's `pid`. The 2 is the protocol version: changing a message or `Member`
-/// changes it, so apps built against incompatible versions ignore each other instead of misreading.
+/// changes it, so apps built against incompatible versions ignore each other instead of misreading. Adding a
+/// message or an optional field doesn't, since older apps ignore both.
 private extension Notification.Name {
     /// A member's description: `member`, JSON-encoded `Member`.
     static let hubMember = Notification.Name("com.mattstallone.menuhub.2.member")
@@ -334,4 +410,8 @@ private extension Notification.Name {
     static let hubClick = Notification.Name("com.mattstallone.menuhub.2.click")
     /// The sender is quitting.
     static let hubLeave = Notification.Name("com.mattstallone.menuhub.2.leave")
+    /// Asks every app with an updater to check quietly: `check`, the round's ID.
+    static let hubCheckForUpdates = Notification.Name("com.mattstallone.menuhub.2.check-for-updates")
+    /// What an app found, for `target`: `check`, `version`, and `result`, a JSON-encoded `UpdateCheckResult`.
+    static let hubUpdateResult = Notification.Name("com.mattstallone.menuhub.2.update-result")
 }

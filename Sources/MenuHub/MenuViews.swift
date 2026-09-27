@@ -165,7 +165,8 @@ final class FlushMenuRowView: NSView {
     override func viewWillDraw() {
         let highlighted = enclosingMenuItem?.isHighlighted == true
         selection.isHidden = !highlighted
-        label.textColor = highlighted ? .selectedMenuItemTextColor : .labelColor
+        label.textColor = enclosingMenuItem?.isEnabled == false ? .tertiaryLabelColor
+            : highlighted ? .selectedMenuItemTextColor : .labelColor
         super.viewWillDraw()
     }
 
@@ -179,7 +180,7 @@ final class FlushMenuRowView: NSView {
     }
 
     private func choose() {
-        guard let item = enclosingMenuItem, let menu = item.menu else { return }
+        guard let item = enclosingMenuItem, item.isEnabled, let menu = item.menu else { return }
         menu.cancelTracking()
         menu.performActionForItem(at: menu.index(of: item))
     }

@@ -9,7 +9,7 @@ Used by [MXSwipe](https://github.com/mstallone/mxswipe) and [RetinaShot](https:/
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/menu-dark.png">
-    <img src="assets/menu-light.png" alt="One menu with an MXSwipe section (MX Master 4 at 83%) and a RetinaShot section, then Quit MXSwipe and Quit RetinaShot" width="460">
+    <img src="assets/menu-light.png" alt="One menu with an MXSwipe section (MX Master 4 at 83%) and a RetinaShot section, then Check for Updates, Quit MXSwipe, and Quit RetinaShot" width="460">
   </picture>
 </p>
 
@@ -17,8 +17,9 @@ Used by [MXSwipe](https://github.com/mstallone/mxswipe) and [RetinaShot](https:/
 
 ```swift
 import MenuHub
+import MenuHubSparkle
 
-menu = MenuHub(symbol: "computermouse") {
+menu = MenuHub(symbol: "computermouse", updater: SparkleUpdater()) {
     MenuSection(header: MenuHeader(title: "MX Master 4", detail: .battery(83)), items: [
         .action("Turn Gestures Off") { self.toggleGestures() },
         .separator,
@@ -34,16 +35,25 @@ alternates, lines of information, headings, submenus, and separators. `isActive:
 Setting `symbol` shows a different SF Symbol while it's set, for a state worth seeing at a glance, like
 recording; when menus are combined it replaces the shared icon too, so the state isn't hidden.
 
+`updater` adds Check for Updates…. `SparkleUpdater`, in the `MenuHubSparkle` library, updates the app with
+[Sparkle](https://sparkle-project.org), configured by the usual keys in its Info.plist, and runs Sparkle's
+scheduled checks. The app embeds and signs Sparkle.framework as for any Sparkle app. An app that doesn't
+update this way uses only `MenuHub`, which has no dependencies. Another updater can conform to `Updater`.
+
 ## How it works
 
-- Apps exchange four distributed notifications: a JSON description of each app's section, a request for
-  everyone to send theirs again, a click, and a goodbye. An app that crashes is noticed through
+- Apps exchange distributed notifications: a JSON description of each app's section, a request for
+  everyone to send theirs again, a click, a goodbye, and the two messages of an update check. An app that crashes is noticed through
   `NSWorkspace`'s list of running apps.
 - The app with the earliest launch shows the icon, so it stays put while others come and go; when that
   app quits, the next takes over. A newly launched app waits 300 ms before showing an icon, so an app
   that is about to join someone else's menu never flashes its own.
 - Combined, each app's section gets a header (its own, or its name), sections are divided by a gap, and
   each app has a Quit item at the bottom. The icon is a grid, bright while any app is active.
+- Combined, one Check for Updates… covers every app with an updater. Each checks quietly; an app that
+  finds an update shows it in its own window, since it installs itself, and the rest are summed up in a
+  single alert, shown only when every app is up to date or one couldn't check. On its own, or when no
+  other app has an updater, an app runs its usual check.
 - A process tracking a menu gets its global hot keys only after the menu closes. An app whose hot keys
   must work while the menu is open, like a screenshot tool capturing it, passes `yieldsIcon: true` and
   shows the icon only when no app that doesn't yield is running. `onMenuOpen` reports when the app's own

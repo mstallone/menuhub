@@ -15,13 +15,13 @@ let size = NSSize(width: 460, height: 404)
 let barHeight: CGFloat = 24
 
 @MainActor func sampleMembers() -> [Member] {
-    let mxswipe = Member(pid: 1, name: "MXSwipe", launched: Date(), yieldsIcon: false, revision: 0, isActive: true, symbol: nil, toolTip: nil,
+    let mxswipe = Member(pid: 1, name: "MXSwipe", launched: Date(), yieldsIcon: false, checksForUpdates: true, revision: 0,
+                         isActive: true, symbol: nil, toolTip: nil,
                          header: MenuHeader(title: "MX Master 4", detail: .battery(83)), items: [
-                             .action("Turn Gestures Off") {}, .separator,
-                             .action("Open at Login", isOn: true) {}, .action("Check for Updates…") {},
+                             .action("Turn Gestures Off") {}, .separator, .action("Open at Login", isOn: true) {},
                          ])
-    let retinashot = Member(pid: 2, name: "RetinaShot", launched: Date(), yieldsIcon: false, revision: 0, isActive: true, symbol: nil, toolTip: nil,
-                            header: nil, items: [
+    let retinashot = Member(pid: 2, name: "RetinaShot", launched: Date(), yieldsIcon: true, checksForUpdates: true, revision: 0,
+                            isActive: true, symbol: nil, toolTip: nil, header: nil, items: [
                                 .action("Capture Selection", key: "4", modifiers: [.shift, .command]) {},
                                 .action("Capture Window") {}, .separator,
                                 .action("Show Floating Thumbnail", isOn: true) {}, .action("Open at Login", isOn: true) {},
@@ -78,7 +78,7 @@ final class BackdropView: NSView {
     backdrop.orderFrontRegardless()
 
     nonisolated(unsafe) let menu = NSMenu()
-    MenuHub.populate(menu, with: sampleMembers(), version: "", target: nil)
+    MenuHub.populate(menu, with: sampleMembers(), version: "", canCheckForUpdates: true, target: nil)
     let timer = Timer(timeInterval: 0.6, repeats: false) { _ in
         MainActor.assumeIsolated {
             let pid = getpid()
