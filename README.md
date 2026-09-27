@@ -18,7 +18,7 @@ Used by [MXSwipe](https://github.com/mstallone/mxswipe) and [RetinaShot](https:/
 ```swift
 import MenuHub
 
-menu = MenuHub(icon: NSImage(systemSymbolName: "computermouse", accessibilityDescription: "MXSwipe")!) {
+menu = MenuHub(symbol: "computermouse") {
     MenuSection(header: MenuHeader(title: "MX Master 4", detail: .battery(83)), items: [
         .action("Turn Gestures Off") { self.toggleGestures() },
         .separator,
@@ -27,10 +27,12 @@ menu = MenuHub(icon: NSImage(systemSymbolName: "computermouse", accessibilityDes
 }
 ```
 
-The section is read again whenever the menu opens; call `update()` when something it shows changes in
-the meantime. The hub adds the app's Quit item, and its version while the app has the menu to itself. Items can be actions (with an optional key
-equivalent, checkmark, or disabled state), Option-key alternates, lines of information, and separators. `isActive: false`
-fades the icon.
+The section is read again whenever the menu opens; call `update()` when something it shows changes in the
+meantime. The hub adds the app's Quit item, and its version while the app has the menu to itself. Items
+can be actions (with an optional subtitle, key equivalent, checkmark, or disabled state), Option-key
+alternates, lines of information, headings, submenus, and separators. `isActive: false` fades the icon.
+Setting `symbol` shows a different SF Symbol while it's set, for a state worth seeing at a glance, like
+recording; when menus are combined it replaces the shared icon too, so the state isn't hidden.
 
 ## How it works
 

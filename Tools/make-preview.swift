@@ -15,12 +15,12 @@ let size = NSSize(width: 460, height: 404)
 let barHeight: CGFloat = 24
 
 @MainActor func sampleMembers() -> [Member] {
-    let mxswipe = Member(pid: 1, name: "MXSwipe", launched: Date(), revision: 0, isActive: true,
+    let mxswipe = Member(pid: 1, name: "MXSwipe", launched: Date(), revision: 0, isActive: true, symbol: nil, toolTip: nil,
                          header: MenuHeader(title: "MX Master 4", detail: .battery(83)), items: [
                              .action("Turn Gestures Off") {}, .separator,
                              .action("Open at Login", isOn: true) {}, .action("Check for Updates…") {},
                          ])
-    let retinashot = Member(pid: 2, name: "RetinaShot", launched: Date(), revision: 0, isActive: true,
+    let retinashot = Member(pid: 2, name: "RetinaShot", launched: Date(), revision: 0, isActive: true, symbol: nil, toolTip: nil,
                             header: nil, items: [
                                 .action("Capture Selection", key: "4", modifiers: [.shift, .command]) {},
                                 .action("Capture Window") {}, .separator,

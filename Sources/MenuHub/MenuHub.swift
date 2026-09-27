@@ -11,7 +11,7 @@ import OSLog
 public final class MenuHub: NSObject {
     private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "MenuHub", category: "MenuHub")
 
-    private let icon: NSImage
+    private let symbol: String
     private let content: @MainActor () -> MenuSection
     private let version: String
     private var mine: Member
@@ -25,18 +25,18 @@ public final class MenuHub: NSObject {
     private var isPastStartupGrace = false
     private var workspaceObservation: NSKeyValueObservation?
 
-    /// `icon` is a template image, shown when the app has the icon to itself. `content` is asked for the
+    /// `symbol` names the SF Symbol shown when the app has the icon to itself. `content` is asked for the
     /// app's section whenever it may be shown; call `update()` when something in it changes.
-    public init(icon: NSImage, content: @escaping @MainActor () -> MenuSection) {
+    public init(symbol: String, content: @escaping @MainActor () -> MenuSection) {
         let info = Bundle.main.infoDictionary ?? [:]
-        self.icon = icon
+        self.symbol = symbol
         self.content = content
         version = info["CFBundleShortVersionString"] as? String ?? ""
         mine = Member(
             pid: ProcessInfo.processInfo.processIdentifier,
             name: info["CFBundleDisplayName"] as? String ?? info["CFBundleName"] as? String ?? ProcessInfo.processInfo.processName,
             launched: NSRunningApplication.current.launchDate ?? Date(),
-            revision: 0, isActive: true, header: nil, items: []
+            revision: 0, isActive: true, symbol: nil, toolTip: nil, header: nil, items: []
         )
         super.init()
         menuDelegate = MenuDelegate(
@@ -76,6 +76,8 @@ public final class MenuHub: NSObject {
         let section = content()
         var next = mine
         next.isActive = section.isActive
+        next.symbol = section.symbol
+        next.toolTip = section.toolTip
         next.header = section.header
         next.items = section.items
         if !next.hasSameContent(as: mine) { next.revision += 1 }
@@ -105,9 +107,8 @@ public final class MenuHub: NSObject {
             guard info["target"] as? Int32 == mine.pid else { return }
             if info["quit"] as? Bool == true { return NSApp.terminate(nil) }
             // A click on a menu drawn from an earlier description is dropped rather than misrouted.
-            guard info["revision"] as? Int == mine.revision, let index = info["item"] as? Int,
-                  mine.items.indices.contains(index) else { return }
-            mine.items[index].perform?()
+            guard info["revision"] as? Int == mine.revision, let path = info["item"] as? [Int] else { return }
+            MenuItem.at(path, in: mine.items)?.action.perform()
         case .hubLeave:
             forget { $0 == sender }
         default:
@@ -145,20 +146,24 @@ public final class MenuHub: NSObject {
             Self.logger.notice("Handing the menu-bar icon to another app")
         }
         guard let button = statusItem?.button else { return }
-        if others.isEmpty {
-            button.image = Self.icon(icon, active: mine.isActive, description: mine.name)
+        let members = sortedMembers
+        // An app's own symbol shows while it has the icon to itself, or while it asks to be seen.
+        if let member = others.isEmpty ? mine : members.first(where: { $0.symbol != nil }) {
+            let name = member.pid == mine.pid ? mine.symbol ?? symbol : member.symbol!
+            button.image = Self.icon(name, active: member.isActive, description: member.toolTip ?? member.name)
+            button.toolTip = member.toolTip
         } else {
-            let members = sortedMembers
-            let symbol = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: nil)!
-            button.image = Self.icon(symbol, active: members.contains(where: \.isActive),
+            button.image = Self.icon("square.grid.2x2", active: members.contains(where: \.isActive),
                                      description: members.map(\.name).formatted(.list(type: .and)))
+            button.toolTip = nil
         }
         if menuIsOpen { build() }
     }
 
     /// Full strength while active, faded otherwise. Drawn at partial opacity rather than with
     /// `appearsDisabled`, so the level is the same on every menu bar; still a template, so it's tinted.
-    private static func icon(_ symbol: NSImage, active: Bool, description: String) -> NSImage {
+    private static func icon(_ name: String, active: Bool, description: String) -> NSImage? {
+        guard let symbol = NSImage(systemSymbolName: name, accessibilityDescription: nil) else { return nil }
         let image = NSImage(size: symbol.size, flipped: false) { rect in
             symbol.draw(in: rect, from: .zero, operation: .sourceOver, fraction: active ? 1 : 0.4)
             return true
@@ -211,40 +216,55 @@ public final class MenuHub: NSObject {
             row.view = MenuHeaderView(header)
             menu.addItem(row)
         }
-        for (index, item) in member.items.enumerated() {
+        add(member.items, at: [], of: member, to: menu, target: target)
+    }
+
+    /// Adds `items`, whose position in the member's section is `path`, recursing into submenus.
+    private static func add(_ items: [MenuItem], at path: [Int], of member: Member, to menu: NSMenu, target: MenuHub?) {
+        for (index, item) in items.enumerated() {
+            let row: NSMenuItem
             switch item.kind {
             case .separator:
                 menu.addItem(.separator())
+                continue
+            case .heading:
+                row = .sectionHeader(title: item.title)
             case .info:
-                let row = menu.addItem(withTitle: item.title, action: nil, keyEquivalent: "")
-                row.state = item.isOn == true ? .on : .off
-                row.isEnabled = false
+                row = NSMenuItem(title: item.title, action: nil, keyEquivalent: "")
+            case .submenu:
+                row = NSMenuItem(title: item.title, action: nil, keyEquivalent: "")
+                let submenu = NSMenu()
+                submenu.autoenablesItems = false
+                add(item.children ?? [], at: path + [index], of: member, to: submenu, target: target)
+                row.submenu = submenu
             case .action:
-                let row = menu.addItem(withTitle: item.title, action: #selector(choose), keyEquivalent: item.keyEquivalent)
+                row = NSMenuItem(title: item.title, action: #selector(choose), keyEquivalent: item.keyEquivalent)
                 row.target = target
                 row.keyEquivalentModifierMask = NSEvent.ModifierFlags(rawValue: item.modifiers)
                 row.isAlternate = item.isAlternate
-                row.state = item.isOn == true ? .on : .off
-                row.isEnabled = item.isEnabled
-                row.representedObject = Choice(pid: member.pid, revision: member.revision, item: index)
+                row.representedObject = Choice(pid: member.pid, revision: member.revision, item: path + [index])
             }
+            row.state = item.isOn == true ? .on : .off
+            row.isEnabled = item.isEnabled
+            if #available(macOS 14.4, *), let subtitle = item.subtitle { row.subtitle = subtitle }
+            menu.addItem(row)
         }
     }
 
     private struct Choice {
         let pid: Int32
         let revision: Int
-        /// Nil for the app's Quit item.
-        let item: Int?
+        /// The item's path through nested submenus; nil for the app's Quit item.
+        let item: [Int]?
     }
 
     @objc private func choose(_ sender: NSMenuItem) {
         guard let choice = sender.representedObject as? Choice else { return }
         if choice.pid == mine.pid {
-            guard let item = choice.item else { return NSApp.terminate(nil) }
-            if choice.revision == mine.revision { mine.items[item].perform?() }
-        } else if let item = choice.item {
-            post(.hubClick, ["target": choice.pid, "revision": choice.revision, "item": item])
+            guard let path = choice.item else { return NSApp.terminate(nil) }
+            if choice.revision == mine.revision { MenuItem.at(path, in: mine.items)?.action.perform() }
+        } else if let path = choice.item {
+            post(.hubClick, ["target": choice.pid, "revision": choice.revision, "item": path])
         } else {
             post(.hubClick, ["target": choice.pid, "quit": true])
         }
@@ -273,11 +293,13 @@ struct Member: Codable, Equatable {
     let launched: Date
     var revision: Int
     var isActive: Bool
+    var symbol: String?
+    var toolTip: String?
     var header: MenuHeader?
     var items: [MenuItem]
 
     func hasSameContent(as other: Member) -> Bool {
-        (isActive, header, items) == (other.isActive, other.header, other.items)
+        (isActive, symbol, toolTip, header, items) == (other.isActive, other.symbol, other.toolTip, other.header, other.items)
     }
 
     /// The app that shows the icon: the one running longest, so the icon stays put as others come and go.
@@ -286,15 +308,15 @@ struct Member: Codable, Equatable {
     }
 }
 
-/// Every message carries the sender's `pid`. The 1 is the protocol version: changing a message or `Member`
+/// Every message carries the sender's `pid`. The 2 is the protocol version: changing a message or `Member`
 /// changes it, so apps built against incompatible versions ignore each other instead of misreading.
 private extension Notification.Name {
     /// A member's description: `member`, JSON-encoded `Member`.
-    static let hubMember = Notification.Name("com.mattstallone.menuhub.1.member")
+    static let hubMember = Notification.Name("com.mattstallone.menuhub.2.member")
     /// Asks every member to send its description again.
-    static let hubRefresh = Notification.Name("com.mattstallone.menuhub.1.refresh")
+    static let hubRefresh = Notification.Name("com.mattstallone.menuhub.2.refresh")
     /// A chosen item, for `target`: `revision` and `item`, or `quit`.
-    static let hubClick = Notification.Name("com.mattstallone.menuhub.1.click")
+    static let hubClick = Notification.Name("com.mattstallone.menuhub.2.click")
     /// The sender is quitting.
-    static let hubLeave = Notification.Name("com.mattstallone.menuhub.1.leave")
+    static let hubLeave = Notification.Name("com.mattstallone.menuhub.2.leave")
 }
