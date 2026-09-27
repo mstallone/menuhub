@@ -4,6 +4,7 @@ import XCTest
 final class MenuHubTests: XCTestCase {
     private func member(pid: Int32, launched: TimeInterval, yieldsIcon: Bool = false, items: [MenuItem] = []) -> Member {
         Member(pid: pid, name: "App \(pid)", launched: Date(timeIntervalSinceReferenceDate: launched), yieldsIcon: yieldsIcon,
+               checksForUpdates: false,
                revision: 0, isActive: true, symbol: nil, toolTip: nil, header: MenuHeader(title: "Mouse", detail: .battery(83)),
                items: items)
     }
@@ -60,15 +61,6 @@ final class MenuHubTests: XCTestCase {
         XCTAssertEqual(Member.host(among: [member(pid: 5, launched: 20), member(pid: 9, launched: 10)]), 9)
         XCTAssertEqual(Member.host(among: [member(pid: 5, launched: 10), member(pid: 3, launched: 10)]), 3)
         XCTAssertEqual(Member.host(among: [member(pid: 4, launched: 0)]), 4)
-    }
-
-    func testDescriptionsFromMenuHub02AppsStillDecode() throws {
-        var current = member(pid: 2, launched: 0)
-        current.checksForUpdates = true
-        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(current)) as! [String: Any]
-        XCTAssertNotNil(json.removeValue(forKey: "checksForUpdates"))
-        let decoded = try JSONDecoder().decode(Member.self, from: JSONSerialization.data(withJSONObject: json))
-        XCTAssertNil(decoded.checksForUpdates)
     }
 
     func testAnAppThatYieldsHostsOnlyWhenNoOtherCan() {

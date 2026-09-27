@@ -167,7 +167,7 @@ public final class MenuHub: NSObject {
     /// On its own, or when no other app has an updater, the app runs its usual check. Otherwise every app
     /// with an updater checks quietly, and what they found is summed up once they've all answered.
     @objc private func checkForUpdates() {
-        let apps = ([mine] + others.values).filter { $0.checksForUpdates == true }
+        let apps = ([mine] + others.values).filter(\.checksForUpdates)
         if apps.map(\.pid) == [mine.pid] {
             updater?.checkForUpdates()
             return
@@ -267,7 +267,7 @@ public final class MenuHub: NSObject {
             add(member, header: member.header, to: menu, target: target)
             if menu.items.last?.isSeparatorItem == false { menu.addItem(.separator()) }
             menu.addItem(withTitle: "\(member.name) \(version)", action: nil, keyEquivalent: "").isEnabled = false
-            if member.checksForUpdates == true {
+            if member.checksForUpdates {
                 let check = menu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
                 check.target = target
                 check.isEnabled = canCheckForUpdates
@@ -281,7 +281,7 @@ public final class MenuHub: NSObject {
             divider.view = SectionDividerView()
             menu.addItem(divider)
         }
-        if members.contains(where: { $0.checksForUpdates == true }) {
+        if members.contains(where: \.checksForUpdates) {
             let check = menu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
             check.target = target
             check.isEnabled = canCheckForUpdates
@@ -377,8 +377,7 @@ struct Member: Codable, Equatable {
     let name: String
     let launched: Date
     let yieldsIcon: Bool
-    /// Whether the app has an updater. Nil from apps built with MenuHub 0.2, which don't share update checks.
-    var checksForUpdates: Bool?
+    let checksForUpdates: Bool
     var revision: Int
     var isActive: Bool
     var symbol: String?
@@ -398,20 +397,20 @@ struct Member: Codable, Equatable {
     }
 }
 
-/// Every message carries the sender's `pid`. The 2 is the protocol version: changing a message or `Member`
-/// changes it, so apps built against incompatible versions ignore each other instead of misreading. Adding a
-/// message or an optional field doesn't, since older apps ignore both.
+/// Every message carries the sender's `pid`. The 3 is the protocol version: changing the messages or `Member`
+/// changes it, so apps built against different versions keep their own menus instead of sharing one that
+/// misreads, or lacks, what the other offers.
 private extension Notification.Name {
     /// A member's description: `member`, JSON-encoded `Member`.
-    static let hubMember = Notification.Name("com.mattstallone.menuhub.2.member")
+    static let hubMember = Notification.Name("com.mattstallone.menuhub.3.member")
     /// Asks every member to send its description again.
-    static let hubRefresh = Notification.Name("com.mattstallone.menuhub.2.refresh")
+    static let hubRefresh = Notification.Name("com.mattstallone.menuhub.3.refresh")
     /// A chosen item, for `target`: `revision` and `item` (a path), or `quit`.
-    static let hubClick = Notification.Name("com.mattstallone.menuhub.2.click")
+    static let hubClick = Notification.Name("com.mattstallone.menuhub.3.click")
     /// The sender is quitting.
-    static let hubLeave = Notification.Name("com.mattstallone.menuhub.2.leave")
+    static let hubLeave = Notification.Name("com.mattstallone.menuhub.3.leave")
     /// Asks every app with an updater to check quietly: `check`, the round's ID.
-    static let hubCheckForUpdates = Notification.Name("com.mattstallone.menuhub.2.check-for-updates")
+    static let hubCheckForUpdates = Notification.Name("com.mattstallone.menuhub.3.check-for-updates")
     /// What an app found, for `target`: `check`, `version`, and `result`, a JSON-encoded `UpdateCheckResult`.
-    static let hubUpdateResult = Notification.Name("com.mattstallone.menuhub.2.update-result")
+    static let hubUpdateResult = Notification.Name("com.mattstallone.menuhub.3.update-result")
 }
