@@ -26,6 +26,7 @@ public enum UpdateCheckResult: Codable, Equatable, Sendable {
 /// others are summed up in a single alert rather than one each.
 struct UpdateRound {
     struct Answer: Equatable {
+        let pid: Int32
         let name: String
         let version: String
         let result: UpdateCheckResult
@@ -44,7 +45,13 @@ struct UpdateRound {
 
     mutating func record(_ result: UpdateCheckResult, version: String, from pid: Int32) {
         guard let name = waiting.removeValue(forKey: pid) else { return }
-        answers.append(Answer(name: name, version: version, result: result))
+        answers.append(Answer(pid: pid, name: name, version: version, result: result))
+    }
+
+    /// Every app in the round that hasn't quit, by name, for the alert's icon.
+    var apps: [Int32] {
+        (answers.map { ($0.pid, $0.name) } + waiting.map { ($0.key, $0.value) })
+            .sorted { $0.1.localizedStandardCompare($1.1) == .orderedAscending }.map(\.0)
     }
 
     /// An app that quit before answering.

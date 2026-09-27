@@ -52,8 +52,8 @@ update this way uses only `MenuHub`, which has no dependencies. Another updater 
   each app has a Quit item at the bottom. The icon is a grid, bright while any app is active.
 - Combined, one Check for Updates… covers every app with an updater. Each checks quietly; an app that
   finds an update shows it in its own window, since it installs itself, and the rest are summed up in a
-  single alert, shown only when every app is up to date or one couldn't check. On its own, or when no
-  other app has an updater, an app runs its usual check.
+  single alert with their icons stacked, shown only when every app is up to date or one couldn’t check.
+  On its own, or when no other app has an updater, an app runs its usual check.
 - A process tracking a menu gets its global hot keys only after the menu closes. An app whose hot keys
   must work while the menu is open, like a screenshot tool capturing it, passes `yieldsIcon: true` and
   shows the icon only when no app that doesn't yield is running. `onMenuOpen` reports when the app's own

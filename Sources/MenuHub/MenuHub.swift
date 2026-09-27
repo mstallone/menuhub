@@ -198,7 +198,22 @@ public final class MenuHub: NSObject {
         let alert = NSAlert()
         alert.messageText = summary.title
         alert.informativeText = summary.text
+        alert.icon = Self.stackedIcon(finished.apps.compactMap { NSRunningApplication(processIdentifier: $0)?.icon })
         alert.runModal()
+    }
+
+    /// The apps' icons overlapping from the top left, for an alert that speaks for all of them.
+    private static func stackedIcon(_ icons: [NSImage]) -> NSImage? {
+        guard icons.count > 1 else { return icons.first }
+        let canvas: CGFloat = 64, side = canvas * 0.72
+        let step = (canvas - side) / CGFloat(icons.count - 1)
+        return NSImage(size: NSSize(width: canvas, height: canvas), flipped: true) { _ in
+            for (index, icon) in icons.enumerated() {
+                let offset = CGFloat(index) * step
+                icon.draw(in: NSRect(x: offset, y: offset, width: side, height: side))
+            }
+            return true
+        }
     }
 
     // MARK: Icon

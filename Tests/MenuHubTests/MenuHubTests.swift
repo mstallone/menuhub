@@ -168,6 +168,7 @@ final class UpdateRoundTests: XCTestCase {
         XCTAssertFalse(round.isComplete)
         round.record(.upToDate, version: "0.3.2", from: 1)
         XCTAssertTrue(round.isComplete)
+        XCTAssertEqual(round.apps, [1, 2])
         XCTAssertEqual(round.summary?.title, "You’re up to date!")
         XCTAssertEqual(round.summary?.text, "MXSwipe 0.3.2 and RetinaShot 1.5.0 are currently the newest versions available.")
     }
