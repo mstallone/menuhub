@@ -132,6 +132,23 @@ final class MenuLayoutTests: XCTestCase {
         XCTAssertFalse(microphone.submenu?.autoenablesItems ?? true)
     }
 
+    func testARowUpdatedInPlaceKeepsItsWidth() {
+        let header = MenuHeaderView(MenuHeader(title: "MX Master 4", detail: .status("Connecting…")))
+        header.setFrameSize(NSSize(width: 300, height: header.frame.height))
+        let oneLine = header.frame.height
+        header.show(contentOf: MenuHeaderView(MenuHeader(title: "MX Master 4", detail: .message("It woke but didn’t accept its configuration."))))
+        XCTAssertEqual(header.frame.width, 300)
+        XCTAssertGreaterThan(header.frame.height, oneLine)
+        XCTAssertEqual(header.accessibilityLabel(), "MX Master 4, It woke but didn’t accept its configuration.")
+        XCTAssertEqual(header.content, MenuHeader(title: "MX Master 4", detail: .message("It woke but didn’t accept its configuration.")))
+
+        let quit = FlushMenuRowView(title: "Quit MXSwipe", detail: "0.3.2")
+        quit.setFrameSize(NSSize(width: 300, height: quit.frame.height))
+        quit.show(contentOf: FlushMenuRowView(title: "Quit MXSwipe", detail: "0.3.3"))
+        XCTAssertEqual(quit.frame.width, 300)
+        XCTAssertEqual(quit.accessibilityLabel(), "Quit MXSwipe, 0.3.3")
+    }
+
     func testAnOutOfRangeBatteryReadingIsClamped() {
         for percent in [-500, -1, 0, 100, 101, 5000] {
             _ = MenuHeaderView(MenuHeader(title: "MX Master 4", detail: .battery(percent)))

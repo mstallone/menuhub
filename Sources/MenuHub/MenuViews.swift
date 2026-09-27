@@ -1,8 +1,12 @@
 import AppKit
 
-/// A row drawn by MenuHub, with what it shows, so a menu updated while open can keep the rows that haven't changed.
+/// A row drawn by MenuHub. An open menu doesn't draw a view put into it, so when a menu is updated while open,
+/// a row that changed shows the new content in place rather than being replaced.
 protocol MenuRow: NSView {
+    /// What the row shows, to tell whether it changed.
     var content: AnyHashable { get }
+    /// Shows what `row`, a new row of the same kind, shows.
+    func show(contentOf row: NSView)
 }
 
 /// Where AppKit draws a menu item's parts, for the rows drawn here to line up with native ones.
@@ -19,12 +23,29 @@ enum MenuMetrics {
 /// A heading row. A view rather than a disabled item, so it reads in full-strength text and never
 /// highlights. It starts where the checkmarks do, left of the item titles, and ends with the key equivalents.
 final class MenuHeaderView: NSView, MenuRow {
-    let content: AnyHashable
+    private var header: MenuHeader
+    var content: AnyHashable { header }
 
     init(_ header: MenuHeader) {
-        content = header
-        let title = header.title
+        self.header = header
         super.init(frame: .zero)
+        autoresizingMask = .width
+        setAccessibilityElement(true)
+        setAccessibilityRole(.staticText)
+        build()
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    func show(contentOf row: NSView) {
+        guard let row = row as? MenuHeaderView else { return }
+        header = row.header
+        build()
+    }
+
+    private func build() {
+        subviews.forEach { $0.removeFromSuperview() }
+        let title = header.title
         let size = NSFont.menuFont(ofSize: 0).pointSize
         let titleLabel = label(title, font: .systemFont(ofSize: size, weight: .semibold), color: .labelColor)
         titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: MenuMetrics.leading).isActive = true
@@ -70,15 +91,11 @@ final class MenuHeaderView: NSView, MenuRow {
         }
         bottom.constraint(equalTo: bottomAnchor, constant: -4).isActive = true
 
-        // The menu widens the row to its own width; this is only the minimum it asks for.
-        frame.size = fittingSize
-        autoresizingMask = .width
-        setAccessibilityElement(true)
-        setAccessibilityRole(.staticText)
+        // The menu widens the row to its own width; the fitting width is only the minimum it asks for.
+        let fitting = fittingSize
+        setFrameSize(NSSize(width: max(frame.width, fitting.width), height: fitting.height))
         setAccessibilityLabel(accessibility)
     }
-
-    required init?(coder: NSCoder) { nil }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
@@ -117,6 +134,8 @@ final class SectionDividerView: NSView, MenuRow {
 
     required init?(coder: NSCoder) { nil }
 
+    func show(contentOf row: NSView) {}
+
     override func draw(_ dirtyRect: NSRect) {
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let gap = NSRect(x: 0, y: bounds.midY.rounded() - 4, width: bounds.width, height: 8)
@@ -129,17 +148,19 @@ final class SectionDividerView: NSView, MenuRow {
 /// leave room for a checkmark. It highlights with the same selection material native items use, and a
 /// click sends the item's action. Return does not: AppKit ignores it on items with views.
 final class FlushMenuRowView: NSView, MenuRow {
-    let content: AnyHashable
+    private var title: String
+    private var detail: String?
+    var content: AnyHashable { [title, detail] }
 
     private let selection = NSVisualEffectView()
-    private let label: NSTextField
-    private let capsule: CapsuleView?
+    private let label = NSTextField(labelWithString: "")
+    private var capsule: CapsuleView?
+    private var labelEnd: NSLayoutConstraint?
 
     /// `detail`, like an app's version, is shown in a faint capsule where key equivalents go.
     init(title: String, detail: String? = nil) {
-        content = [title, detail]
-        label = NSTextField(labelWithString: title)
-        capsule = detail.map(CapsuleView.init)
+        self.title = title
+        self.detail = detail
         super.init(frame: NSRect(x: 0, y: 0, width: 100, height: MenuMetrics.rowHeight))
         autoresizingMask = .width
 
@@ -163,24 +184,41 @@ final class FlushMenuRowView: NSView, MenuRow {
             label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: MenuMetrics.leading),
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
-        if let capsule {
-            capsule.translatesAutoresizingMaskIntoConstraints = false
-            addSubview(capsule)
-            NSLayoutConstraint.activate([
-                capsule.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -MenuMetrics.trailing),
-                capsule.centerYAnchor.constraint(equalTo: centerYAnchor),
-                label.trailingAnchor.constraint(lessThanOrEqualTo: capsule.leadingAnchor, constant: -16),
-            ])
-        } else {
-            label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -MenuMetrics.trailing).isActive = true
-        }
-        frame.size.width = fittingSize.width
         setAccessibilityElement(true)
         setAccessibilityRole(.menuItem)
-        setAccessibilityLabel(detail.map { "\(title), \($0)" } ?? title)
+        build()
     }
 
     required init?(coder: NSCoder) { nil }
+
+    func show(contentOf row: NSView) {
+        guard let row = row as? FlushMenuRowView else { return }
+        title = row.title
+        detail = row.detail
+        build()
+    }
+
+    private func build() {
+        label.stringValue = title
+        capsule?.removeFromSuperview()
+        labelEnd?.isActive = false
+        capsule = detail.map(CapsuleView.init)
+        if let capsule {
+            capsule.translatesAutoresizingMaskIntoConstraints = false
+            capsule.appearance = label.appearance
+            addSubview(capsule)
+            labelEnd = label.trailingAnchor.constraint(lessThanOrEqualTo: capsule.leadingAnchor, constant: -16)
+            NSLayoutConstraint.activate([
+                capsule.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -MenuMetrics.trailing),
+                capsule.centerYAnchor.constraint(equalTo: centerYAnchor),
+            ])
+        } else {
+            labelEnd = label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -MenuMetrics.trailing)
+        }
+        labelEnd?.isActive = true
+        frame.size.width = max(frame.width, fittingSize.width)
+        setAccessibilityLabel(detail.map { "\(title), \($0)" } ?? title)
+    }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()

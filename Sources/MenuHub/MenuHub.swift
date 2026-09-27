@@ -286,10 +286,8 @@ public final class MenuHub: NSObject {
     }
 
     private static func update(_ item: NSMenuItem, to new: NSMenuItem) {
-        if let row = new.view as? MenuRow, let old = item.view, (old as? MenuRow)?.content != row.content {
-            // The menu sized the old row to its width; a row put in while it's open isn't resized.
-            row.setFrameSize(NSSize(width: max(row.frame.width, old.frame.width), height: row.frame.height))
-            item.view = row
+        if let row = new.view as? MenuRow, let old = item.view as? MenuRow, old.content != row.content {
+            old.show(contentOf: row)
         }
         if item.title != new.title { item.title = new.title }
         if #available(macOS 14.4, *), item.subtitle != new.subtitle { item.subtitle = new.subtitle }
