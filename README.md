@@ -36,17 +36,18 @@ recording; when menus are combined it replaces the shared icon too, so the state
 
 ## How it works
 
-- Apps exchange distributed notifications: a JSON description of each app's section, a request for
-  everyone to send theirs again, a click, the menu opening or closing, and a goodbye. An app that crashes is noticed through
+- Apps exchange four distributed notifications: a JSON description of each app's section, a request for
+  everyone to send theirs again, a click, and a goodbye. An app that crashes is noticed through
   `NSWorkspace`'s list of running apps.
 - The app with the earliest launch shows the icon, so it stays put while others come and go; when that
   app quits, the next takes over. A newly launched app waits 300 ms before showing an icon, so an app
   that is about to join someone else's menu never flashes its own.
 - Combined, each app's section gets a header (its own, or its name), sections are divided by a gap, and
   each app has a Quit item at the bottom. The icon is a grid, bright while any app is active.
-- Every app hears when the shared menu opens and closes, through `onMenuOpen`. An app with global hot keys
-  should release them while it's open: a hot key takes its keystroke before the menu sees it, so the
-  menu couldn't run an item by its key equivalent.
+- A process tracking a menu gets its global hot keys only after the menu closes. An app whose hot keys
+  must work while the menu is open, like a screenshot tool capturing it, passes `yieldsIcon: true` and
+  shows the icon only when no app that doesn't yield is running. `onMenuOpen` reports when the app's own
+  menu opens and closes, so it can release its hot keys and let the menu's key equivalents take them.
 - A click is sent to the app that described the item, with the revision of the description the menu was
   drawn from; a click on an outdated menu is dropped rather than run against the wrong item.
 - The header, divider, and Quit rows are drawn by MenuHub so they can start at the checkmark column.

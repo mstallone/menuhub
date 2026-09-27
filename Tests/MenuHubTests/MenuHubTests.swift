@@ -2,8 +2,8 @@ import XCTest
 @testable import MenuHub
 
 final class MenuHubTests: XCTestCase {
-    private func member(pid: Int32, launched: TimeInterval, items: [MenuItem] = []) -> Member {
-        Member(pid: pid, name: "App \(pid)", launched: Date(timeIntervalSinceReferenceDate: launched),
+    private func member(pid: Int32, launched: TimeInterval, yieldsIcon: Bool = false, items: [MenuItem] = []) -> Member {
+        Member(pid: pid, name: "App \(pid)", launched: Date(timeIntervalSinceReferenceDate: launched), yieldsIcon: yieldsIcon,
                revision: 0, isActive: true, symbol: nil, toolTip: nil, header: MenuHeader(title: "Mouse", detail: .battery(83)),
                items: items)
     }
@@ -61,12 +61,19 @@ final class MenuHubTests: XCTestCase {
         XCTAssertEqual(Member.host(among: [member(pid: 5, launched: 10), member(pid: 3, launched: 10)]), 3)
         XCTAssertEqual(Member.host(among: [member(pid: 4, launched: 0)]), 4)
     }
+
+    func testAnAppThatYieldsHostsOnlyWhenNoOtherCan() {
+        let yielding = member(pid: 1, launched: 0, yieldsIcon: true)
+        XCTAssertEqual(Member.host(among: [yielding, member(pid: 2, launched: 10)]), 2)
+        XCTAssertEqual(Member.host(among: [yielding]), 1)
+        XCTAssertEqual(Member.host(among: [yielding, member(pid: 3, launched: 5, yieldsIcon: true)]), 1)
+    }
 }
 
 @MainActor
 final class MenuLayoutTests: XCTestCase {
     private func member(_ name: String, pid: Int32, header: MenuHeader? = nil) -> Member {
-        Member(pid: pid, name: name, launched: Date(), revision: 0, isActive: true, symbol: nil, toolTip: nil, header: header,
+        Member(pid: pid, name: name, launched: Date(), yieldsIcon: false, revision: 0, isActive: true, symbol: nil, toolTip: nil, header: header,
                items: [.action("Turn Gestures Off") {}, .separator, .info("Screen Recording Allowed", isOn: true),
                        .action("Check for Updates…", isEnabled: false) {}])
     }

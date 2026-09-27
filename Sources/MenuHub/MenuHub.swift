@@ -11,9 +11,9 @@ import OSLog
 public final class MenuHub: NSObject {
     private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "MenuHub", category: "MenuHub")
 
-    /// Called with true when the shared menu opens, in whichever app shows it, and with false when it closes.
-    /// An app with global hot keys should release them meanwhile: a hot key takes its keystroke before the
-    /// menu sees it, even when the menu shows that keystroke as an item's key equivalent.
+    /// Called with true when this app's menu opens and with false when it closes. While a process tracks a
+    /// menu, its global hot keys are held until the menu closes; an app can release them meanwhile, so the
+    /// menu's own key equivalents take the keystrokes instead.
     public var onMenuOpen: (@MainActor (Bool) -> Void)?
 
     private let symbol: String
@@ -25,8 +25,6 @@ public final class MenuHub: NSObject {
     private let menu = NSMenu()
     private var menuDelegate: MenuDelegate?
     private var menuIsOpen = false
-    /// The app whose menu is open, if any.
-    private var openMenuOwner: Int32?
     /// False for a moment after launch, while the other apps answer, so an app that is about to be a
     /// guest never flashes its own icon.
     private var isPastStartupGrace = false
@@ -34,7 +32,11 @@ public final class MenuHub: NSObject {
 
     /// `symbol` names the SF Symbol shown when the app has the icon to itself. `content` is asked for the
     /// app's section whenever it may be shown; call `update()` when something in it changes.
-    public init(symbol: String, content: @escaping @MainActor () -> MenuSection) {
+    ///
+    /// With `yieldsIcon`, the app shows the icon only when no app that doesn't yield is running. An app whose
+    /// global hot keys must work while the menu is open should yield: a process tracking a menu gets its hot
+    /// keys only after the menu closes.
+    public init(symbol: String, yieldsIcon: Bool = false, content: @escaping @MainActor () -> MenuSection) {
         let info = Bundle.main.infoDictionary ?? [:]
         self.symbol = symbol
         self.content = content
@@ -42,7 +44,7 @@ public final class MenuHub: NSObject {
         mine = Member(
             pid: ProcessInfo.processInfo.processIdentifier,
             name: info["CFBundleDisplayName"] as? String ?? info["CFBundleName"] as? String ?? ProcessInfo.processInfo.processName,
-            launched: NSRunningApplication.current.launchDate ?? Date(),
+            launched: NSRunningApplication.current.launchDate ?? Date(), yieldsIcon: yieldsIcon,
             revision: 0, isActive: true, symbol: nil, toolTip: nil, header: nil, items: []
         )
         super.init()
@@ -54,14 +56,13 @@ public final class MenuHub: NSObject {
             },
             isOpen: { [unowned self] open in
                 menuIsOpen = open
-                post(.hubMenuOpen, ["open": open])
-                menuOpenChanged(open, in: mine.pid)
+                onMenuOpen?(open)
             }
         )
         menu.delegate = menuDelegate
 
         let center = DistributedNotificationCenter.default()
-        for name in [Notification.Name.hubMember, .hubRefresh, .hubClick, .hubMenuOpen, .hubLeave] {
+        for name in [Notification.Name.hubMember, .hubRefresh, .hubClick, .hubLeave] {
             center.addObserver(self, selector: #selector(received), name: name, object: nil, suspensionBehavior: .deliverImmediately)
         }
         NotificationCenter.default.addObserver(self, selector: #selector(willTerminate),
@@ -120,19 +121,11 @@ public final class MenuHub: NSObject {
             // A click on a menu drawn from an earlier description is dropped rather than misrouted.
             guard info["revision"] as? Int == mine.revision, let path = info["item"] as? [Int] else { return }
             MenuItem.at(path, in: mine.items)?.action.perform()
-        case .hubMenuOpen:
-            menuOpenChanged(info["open"] as? Bool == true, in: sender)
         case .hubLeave:
             forget { $0 == sender }
         default:
             break
         }
-    }
-
-    private func menuOpenChanged(_ open: Bool, in pid: Int32) {
-        let wasOpen = openMenuOwner != nil
-        if open { openMenuOwner = pid } else if openMenuOwner == pid { openMenuOwner = nil }
-        if (openMenuOwner != nil) != wasOpen { onMenuOpen?(openMenuOwner != nil) }
     }
 
     @objc private func willTerminate() {
@@ -145,8 +138,6 @@ public final class MenuHub: NSObject {
         for pid in leaving {
             let name = others.removeValue(forKey: pid)?.name ?? ""
             Self.logger.notice("\(name, privacy: .public) left")
-            // An app that quits with its menu open never says the menu closed.
-            menuOpenChanged(false, in: pid)
         }
         render()
     }
@@ -312,6 +303,7 @@ struct Member: Codable, Equatable {
     let pid: Int32
     let name: String
     let launched: Date
+    let yieldsIcon: Bool
     var revision: Int
     var isActive: Bool
     var symbol: String?
@@ -323,9 +315,11 @@ struct Member: Codable, Equatable {
         (isActive, symbol, toolTip, header, items) == (other.isActive, other.symbol, other.toolTip, other.header, other.items)
     }
 
-    /// The app that shows the icon: the one running longest, so the icon stays put as others come and go.
+    /// The app that shows the icon: the one running longest, so the icon stays put as others come and go,
+    /// among the apps that don't yield it if there are any.
     static func host(among members: [Member]) -> Int32? {
-        members.min { ($0.launched, $0.pid) < ($1.launched, $1.pid) }?.pid
+        let candidates = members.filter { !$0.yieldsIcon }
+        return (candidates.isEmpty ? members : candidates).min { ($0.launched, $0.pid) < ($1.launched, $1.pid) }?.pid
     }
 }
 
@@ -338,8 +332,6 @@ private extension Notification.Name {
     static let hubRefresh = Notification.Name("com.mattstallone.menuhub.2.refresh")
     /// A chosen item, for `target`: `revision` and `item` (a path), or `quit`.
     static let hubClick = Notification.Name("com.mattstallone.menuhub.2.click")
-    /// The sender's menu opened or closed: `open`.
-    static let hubMenuOpen = Notification.Name("com.mattstallone.menuhub.2.menu-open")
     /// The sender is quitting.
     static let hubLeave = Notification.Name("com.mattstallone.menuhub.2.leave")
 }
