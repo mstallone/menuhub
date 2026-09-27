@@ -43,8 +43,8 @@ update this way uses only `MenuHub`, which has no dependencies. Another updater 
 ## How it works
 
 - Apps exchange distributed notifications: a JSON description of each app's section, a request for
-  everyone to send theirs again, a click, a goodbye, and the two messages of an update check. An app that crashes is noticed through
-  `NSWorkspace`'s list of running apps.
+  everyone to send theirs again, a click, a goodbye, and the two messages of an update check. An app
+  that crashes is noticed through `NSWorkspace`'s list of running apps.
 - The app with the earliest launch shows the icon, so it stays put while others come and go; when that
   app quits, the next takes over. A newly launched app waits 300 ms before showing an icon, so an app
   that is about to join someone else's menu never flashes its own.
