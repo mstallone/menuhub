@@ -33,24 +33,24 @@ struct UpdateRound {
     }
 
     let id = UUID().uuidString
-    /// The apps yet to answer, by process, with their names.
-    private(set) var waiting: [Int32: String]
+    /// The apps yet to answer, by process, with their names and versions.
+    private(set) var waiting: [Int32: (name: String, version: String)]
     private(set) var answers: [Answer] = []
 
-    init(apps: [Int32: String]) {
+    init(apps: [Int32: (name: String, version: String)]) {
         waiting = apps
     }
 
     var isComplete: Bool { waiting.isEmpty }
 
-    mutating func record(_ result: UpdateCheckResult, version: String, from pid: Int32) {
-        guard let name = waiting.removeValue(forKey: pid) else { return }
-        answers.append(Answer(pid: pid, name: name, version: version, result: result))
+    mutating func record(_ result: UpdateCheckResult, from pid: Int32) {
+        guard let app = waiting.removeValue(forKey: pid) else { return }
+        answers.append(Answer(pid: pid, name: app.name, version: app.version, result: result))
     }
 
     /// Every app in the round that hasn't quit, by name, for the alert's icon.
     var apps: [Int32] {
-        (answers.map { ($0.pid, $0.name) } + waiting.map { ($0.key, $0.value) })
+        (answers.map { ($0.pid, $0.name) } + waiting.map { ($0.key, $0.value.name) })
             .sorted { $0.1.localizedStandardCompare($1.1) == .orderedAscending }.map(\.0)
     }
 
@@ -64,7 +64,7 @@ struct UpdateRound {
     var summary: (title: String, text: String)? {
         let failed = answers.compactMap { answer -> (name: String, reason: String)? in
             if case let .failed(reason) = answer.result { (answer.name, reason) } else { nil }
-        } + waiting.values.map { ($0, "It didn’t respond.") }
+        } + waiting.values.map { ($0.name, "It didn’t respond.") }
         let current = answers.filter { $0.result == .upToDate }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
 
         if failed.isEmpty {

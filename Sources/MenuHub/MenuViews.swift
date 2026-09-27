@@ -1,5 +1,10 @@
 import AppKit
 
+/// A row drawn by MenuHub, with what it shows, so a menu updated while open can keep the rows that haven't changed.
+protocol MenuRow: NSView {
+    var content: AnyHashable { get }
+}
+
 /// Where AppKit draws a menu item's parts, for the rows drawn here to line up with native ones.
 enum MenuMetrics {
     /// Where checkmarks start.
@@ -13,8 +18,11 @@ enum MenuMetrics {
 
 /// A heading row. A view rather than a disabled item, so it reads in full-strength text and never
 /// highlights. It starts where the checkmarks do, left of the item titles, and ends with the key equivalents.
-final class MenuHeaderView: NSView {
+final class MenuHeaderView: NSView, MenuRow {
+    let content: AnyHashable
+
     init(_ header: MenuHeader) {
+        content = header
         let title = header.title
         super.init(frame: .zero)
         let size = NSFont.menuFont(ofSize: 0).pointSize
@@ -98,7 +106,9 @@ final class MenuHeaderView: NSView {
 
 /// The break between two apps' sections: a gap of slightly deeper glass, so each app's items read as their
 /// own pane. Separators stay for the groups within a section.
-final class SectionDividerView: NSView {
+final class SectionDividerView: NSView, MenuRow {
+    let content: AnyHashable = 0
+
     init() {
         super.init(frame: NSRect(x: 0, y: 0, width: 100, height: 15))
         autoresizingMask = .width
@@ -118,12 +128,18 @@ final class SectionDividerView: NSView {
 /// Draws a menu item so its title starts at the checkmark column, like the headers; native items always
 /// leave room for a checkmark. It highlights with the same selection material native items use, and a
 /// click sends the item's action. Return does not: AppKit ignores it on items with views.
-final class FlushMenuRowView: NSView {
+final class FlushMenuRowView: NSView, MenuRow {
+    let content: AnyHashable
+
     private let selection = NSVisualEffectView()
     private let label: NSTextField
+    private let capsule: CapsuleView?
 
-    init(title: String) {
+    /// `detail`, like an app's version, is shown in a faint capsule where key equivalents go.
+    init(title: String, detail: String? = nil) {
+        content = [title, detail]
         label = NSTextField(labelWithString: title)
+        capsule = detail.map(CapsuleView.init)
         super.init(frame: NSRect(x: 0, y: 0, width: 100, height: MenuMetrics.rowHeight))
         autoresizingMask = .width
 
@@ -145,13 +161,23 @@ final class FlushMenuRowView: NSView {
             selection.topAnchor.constraint(equalTo: topAnchor),
             selection.bottomAnchor.constraint(equalTo: bottomAnchor),
             label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: MenuMetrics.leading),
-            label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -MenuMetrics.trailing),
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
+        if let capsule {
+            capsule.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(capsule)
+            NSLayoutConstraint.activate([
+                capsule.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -MenuMetrics.trailing),
+                capsule.centerYAnchor.constraint(equalTo: centerYAnchor),
+                label.trailingAnchor.constraint(lessThanOrEqualTo: capsule.leadingAnchor, constant: -16),
+            ])
+        } else {
+            label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -MenuMetrics.trailing).isActive = true
+        }
         frame.size.width = fittingSize.width
         setAccessibilityElement(true)
         setAccessibilityRole(.menuItem)
-        setAccessibilityLabel(title)
+        setAccessibilityLabel(detail.map { "\(title), \($0)" } ?? title)
     }
 
     required init?(coder: NSCoder) { nil }
@@ -159,6 +185,7 @@ final class FlushMenuRowView: NSView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         label.appearance = plainAppearance(matching: self)
+        capsule?.appearance = label.appearance
     }
 
     /// The menu redraws the row when its highlight changes.
@@ -167,6 +194,7 @@ final class FlushMenuRowView: NSView {
         selection.isHidden = !highlighted
         label.textColor = enclosingMenuItem?.isEnabled == false ? .tertiaryLabelColor
             : highlighted ? .selectedMenuItemTextColor : .labelColor
+        capsule?.isHighlighted = highlighted
         super.viewWillDraw()
     }
 
@@ -183,6 +211,38 @@ final class FlushMenuRowView: NSView {
         guard let item = enclosingMenuItem, item.isEnabled, let menu = item.menu else { return }
         menu.cancelTracking()
         menu.performActionForItem(at: menu.index(of: item))
+    }
+}
+
+/// Short text in a faint capsule, like an app's version beside its Quit item.
+final class CapsuleView: NSView {
+    private static let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+    private let text: String
+    var isHighlighted = false {
+        didSet { if isHighlighted != oldValue { needsDisplay = true } }
+    }
+
+    init(_ text: String) {
+        self.text = text
+        super.init(frame: .zero)
+        setAccessibilityElement(false)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override var intrinsicContentSize: NSSize {
+        let size = (text as NSString).size(withAttributes: [.font: Self.font])
+        return NSSize(width: ceil(size.width) + 12, height: 17)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        (isHighlighted ? NSColor.white.withAlphaComponent(0.2) : NSColor.labelColor.withAlphaComponent(0.07)).setFill()
+        NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).fill()
+        let string = NSAttributedString(string: text, attributes: [
+            .font: Self.font, .foregroundColor: isHighlighted ? NSColor.selectedMenuItemTextColor : NSColor.secondaryLabelColor,
+        ])
+        let size = string.size()
+        string.draw(at: NSPoint(x: ((bounds.width - size.width) / 2).rounded(), y: ((bounds.height - size.height) / 2).rounded()))
     }
 }
 

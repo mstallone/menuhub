@@ -26,8 +26,8 @@ public struct MenuSection {
 }
 
 /// A heading row: a title, with a short status on the right or a sentence underneath.
-public struct MenuHeader: Codable, Equatable, Sendable {
-    public enum Detail: Codable, Equatable, Sendable {
+public struct MenuHeader: Codable, Hashable, Sendable {
+    public enum Detail: Codable, Hashable, Sendable {
         case battery(Int)
         /// A word or two, on the right like the battery.
         case status(String)

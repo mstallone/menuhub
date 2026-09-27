@@ -19,7 +19,6 @@ public final class MenuHub: NSObject {
     private let symbol: String
     private let content: @MainActor () -> MenuSection
     private let updater: (any Updater)?
-    private let version: String
     private var mine: Member
     private var others: [Int32: Member] = [:]
     private var statusItem: NSStatusItem?
@@ -47,10 +46,10 @@ public final class MenuHub: NSObject {
         self.symbol = symbol
         self.content = content
         self.updater = updater
-        version = info["CFBundleShortVersionString"] as? String ?? ""
         mine = Member(
             pid: ProcessInfo.processInfo.processIdentifier,
             name: info["CFBundleDisplayName"] as? String ?? info["CFBundleName"] as? String ?? ProcessInfo.processInfo.processName,
+            version: info["CFBundleShortVersionString"] as? String ?? "",
             launched: NSRunningApplication.current.launchDate ?? Date(), yieldsIcon: yieldsIcon, checksForUpdates: updater != nil,
             revision: 0, isActive: true, symbol: nil, toolTip: nil, header: nil, items: []
         )
@@ -134,13 +133,12 @@ public final class MenuHub: NSObject {
             guard let updater, let round = info["check"] as? String else { return }
             Task {
                 let result = await updater.checkForUpdatesQuietly()
-                post(.hubUpdateResult, ["target": sender, "check": round, "version": version,
-                                        "result": try! JSONEncoder().encode(result)])
+                post(.hubUpdateResult, ["target": sender, "check": round, "result": try! JSONEncoder().encode(result)])
             }
         case .hubUpdateResult:
             guard info["target"] as? Int32 == mine.pid, let round = info["check"] as? String, let data = info["result"] as? Data,
                   let result = try? JSONDecoder().decode(UpdateCheckResult.self, from: data) else { return }
-            record(result, version: info["version"] as? String ?? "", from: sender, in: round)
+            record(result, from: sender, in: round)
         default:
             break
         }
@@ -172,11 +170,11 @@ public final class MenuHub: NSObject {
             updater?.checkForUpdates()
             return
         }
-        let round = UpdateRound(apps: Dictionary(uniqueKeysWithValues: apps.map { ($0.pid, $0.name) }))
+        let round = UpdateRound(apps: Dictionary(uniqueKeysWithValues: apps.map { ($0.pid, ($0.name, $0.version)) }))
         updateRound = round
         post(.hubCheckForUpdates, ["check": round.id])
         if let updater {
-            Task { record(await updater.checkForUpdatesQuietly(), version: version, from: mine.pid, in: round.id) }
+            Task { record(await updater.checkForUpdatesQuietly(), from: mine.pid, in: round.id) }
         }
         Task {
             try? await Task.sleep(for: .seconds(30))
@@ -184,9 +182,9 @@ public final class MenuHub: NSObject {
         }
     }
 
-    private func record(_ result: UpdateCheckResult, version: String, from pid: Int32, in round: String) {
+    private func record(_ result: UpdateCheckResult, from pid: Int32, in round: String) {
         guard updateRound?.id == round else { return }
-        updateRound?.record(result, version: version, from: pid)
+        updateRound?.record(result, from: pid)
         if updateRound?.isComplete == true { finish(round) }
     }
 
@@ -267,21 +265,59 @@ public final class MenuHub: NSObject {
 
     private func build() {
         let canCheck = others.isEmpty ? updater?.canCheckForUpdates ?? false : updateRound == nil
-        Self.populate(menu, with: sortedMembers, version: version, canCheckForUpdates: canCheck, target: self)
+        let fresh = NSMenu()
+        Self.populate(fresh, with: sortedMembers, canCheckForUpdates: canCheck, target: self)
+        let items = fresh.items
+        fresh.removeAllItems()
+        // Replacing the items of an open menu makes AppKit measure it again, and it jumps to another width. An
+        // open menu with the same rows is updated in place instead.
+        if menuIsOpen, menu.items.count == items.count, zip(menu.items, items).allSatisfy(Self.isSameKind) {
+            for (item, new) in zip(menu.items, items) { Self.update(item, to: new) }
+        } else {
+            menu.removeAllItems()
+            items.forEach(menu.addItem)
+        }
     }
 
-    /// Fills `menu` with the members' sections. On its own, an app gets its section, `version`, Check for
+    private static func isSameKind(_ item: NSMenuItem, _ new: NSMenuItem) -> Bool {
+        item.isSeparatorItem == new.isSeparatorItem && item.isSectionHeader == new.isSectionHeader
+            && (item.submenu == nil) == (new.submenu == nil)
+            && item.view.map { type(of: $0) } == new.view.map { type(of: $0) }
+    }
+
+    private static func update(_ item: NSMenuItem, to new: NSMenuItem) {
+        if let row = new.view as? MenuRow, let old = item.view, (old as? MenuRow)?.content != row.content {
+            // The menu sized the old row to its width; a row put in while it's open isn't resized.
+            row.setFrameSize(NSSize(width: max(row.frame.width, old.frame.width), height: row.frame.height))
+            item.view = row
+        }
+        if item.title != new.title { item.title = new.title }
+        if #available(macOS 14.4, *), item.subtitle != new.subtitle { item.subtitle = new.subtitle }
+        item.state = new.state
+        item.isEnabled = new.isEnabled
+        item.keyEquivalent = new.keyEquivalent
+        item.keyEquivalentModifierMask = new.keyEquivalentModifierMask
+        item.isAlternate = new.isAlternate
+        item.target = new.target
+        item.action = new.action
+        item.representedObject = new.representedObject
+        if let submenu = new.submenu {
+            new.submenu = nil
+            item.submenu = submenu
+        }
+    }
+
+    /// Fills `menu` with the members' sections. On its own, an app gets its section, its version, Check for
     /// Updates… if it has an updater, and Quit, as an unshared menu would have. Combined, each app gets a
-    /// headed section, and at the bottom one Check for Updates… and a Quit for each app. Items are enabled
+    /// headed section, and at the bottom one Check for Updates… and a Quit for each app, beside its version. Items are enabled
     /// explicitly, as their descriptions say, rather than by AppKit's validation.
-    static func populate(_ menu: NSMenu, with members: [Member], version: String, canCheckForUpdates: Bool,
-                         target: MenuHub?) {
+    static func populate(_ menu: NSMenu, with members: [Member], canCheckForUpdates: Bool, target: MenuHub?) {
         menu.removeAllItems()
         menu.autoenablesItems = false
         if members.count == 1, let member = members.first {
             add(member, header: member.header, to: menu, target: target)
             if menu.items.last?.isSeparatorItem == false { menu.addItem(.separator()) }
-            menu.addItem(withTitle: "\(member.name) \(version)", action: nil, keyEquivalent: "").isEnabled = false
+            menu.addItem(withTitle: "\(member.name) \(member.version)", action: nil, keyEquivalent: "").isEnabled = false
             if member.checksForUpdates {
                 let check = menu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
                 check.target = target
@@ -306,7 +342,7 @@ public final class MenuHub: NSObject {
             let quit = menu.addItem(withTitle: "Quit \(member.name)", action: #selector(choose), keyEquivalent: "")
             quit.target = target
             quit.representedObject = Choice(pid: member.pid, revision: member.revision, item: nil)
-            quit.view = FlushMenuRowView(title: quit.title)
+            quit.view = FlushMenuRowView(title: quit.title, detail: member.version)
         }
     }
 
@@ -390,6 +426,7 @@ private final class MenuDelegate: NSObject, NSMenuDelegate {
 struct Member: Codable, Equatable {
     let pid: Int32
     let name: String
+    let version: String
     let launched: Date
     let yieldsIcon: Bool
     let checksForUpdates: Bool
@@ -412,20 +449,20 @@ struct Member: Codable, Equatable {
     }
 }
 
-/// Every message carries the sender's `pid`. The 3 is the protocol version: changing the messages or `Member`
+/// Every message carries the sender's `pid`. The 4 is the protocol version: changing the messages or `Member`
 /// changes it, so apps built against different versions keep their own menus instead of sharing one that
 /// misreads, or lacks, what the other offers.
 private extension Notification.Name {
     /// A member's description: `member`, JSON-encoded `Member`.
-    static let hubMember = Notification.Name("com.mattstallone.menuhub.3.member")
+    static let hubMember = Notification.Name("com.mattstallone.menuhub.4.member")
     /// Asks every member to send its description again.
-    static let hubRefresh = Notification.Name("com.mattstallone.menuhub.3.refresh")
+    static let hubRefresh = Notification.Name("com.mattstallone.menuhub.4.refresh")
     /// A chosen item, for `target`: `revision` and `item` (a path), or `quit`.
-    static let hubClick = Notification.Name("com.mattstallone.menuhub.3.click")
+    static let hubClick = Notification.Name("com.mattstallone.menuhub.4.click")
     /// The sender is quitting.
-    static let hubLeave = Notification.Name("com.mattstallone.menuhub.3.leave")
+    static let hubLeave = Notification.Name("com.mattstallone.menuhub.4.leave")
     /// Asks every app with an updater to check quietly: `check`, the round's ID.
-    static let hubCheckForUpdates = Notification.Name("com.mattstallone.menuhub.3.check-for-updates")
-    /// What an app found, for `target`: `check`, `version`, and `result`, a JSON-encoded `UpdateCheckResult`.
-    static let hubUpdateResult = Notification.Name("com.mattstallone.menuhub.3.update-result")
+    static let hubCheckForUpdates = Notification.Name("com.mattstallone.menuhub.4.check-for-updates")
+    /// What an app found, for `target`: `check`, and `result`, a JSON-encoded `UpdateCheckResult`.
+    static let hubUpdateResult = Notification.Name("com.mattstallone.menuhub.4.update-result")
 }

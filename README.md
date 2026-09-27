@@ -9,7 +9,7 @@ Used by [MXSwipe](https://github.com/mstallone/mxswipe) and [RetinaShot](https:/
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/menu-dark.png">
-    <img src="assets/menu-light.png" alt="One menu with an MXSwipe section (MX Master 4 at 83%) and a RetinaShot section, then Check for Updates, Quit MXSwipe, and Quit RetinaShot" width="460">
+    <img src="assets/menu-light.png" alt="One menu with an MXSwipe section (MX Master 4 at 83%) and a RetinaShot section, then Check for Updates, and Quit MXSwipe and Quit RetinaShot beside their versions" width="460">
   </picture>
 </p>
 
@@ -49,7 +49,7 @@ update this way uses only `MenuHub`, which has no dependencies. Another updater 
   app quits, the next takes over. A newly launched app waits 300 ms before showing an icon, so an app
   that is about to join someone else's menu never flashes its own.
 - Combined, each app's section gets a header (its own, or its name), sections are divided by a gap, and
-  each app has a Quit item at the bottom. The icon is a grid, bright while any app is active.
+  each app has a Quit item at the bottom, with its version beside it. The icon is a grid, bright while any app is active.
 - Combined, one Check for Updates… covers every app with an updater. Each checks quietly; an app that
   finds an update shows it in its own window, since it installs itself, and the rest are summed up in a
   single alert with their icons stacked, shown only when every app is up to date or one couldn’t check.
@@ -58,6 +58,8 @@ update this way uses only `MenuHub`, which has no dependencies. Another updater 
   must work while the menu is open, like a screenshot tool capturing it, passes `yieldsIcon: true` and
   shows the icon only when no app that doesn't yield is running. `onMenuOpen` reports when the app's own
   menu opens and closes, so it can release its hot keys and let the menu's key equivalents take them.
+- The menu asks every app for its section as it opens, and updates in place when one has changed, so an
+  open menu keeps its width rather than being measured again.
 - A click is sent to the app that described the item, with the revision of the description the menu was
   drawn from; a click on an outdated menu is dropped rather than run against the wrong item.
 - The header, divider, and Quit rows are drawn by MenuHub so they can start at the checkmark column.
