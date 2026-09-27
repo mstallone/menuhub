@@ -107,6 +107,16 @@ final class MenuLayoutTests: XCTestCase {
         XCTAssertFalse(menu.items[menu.items.count - 2].isEnabled)
     }
 
+    func testRowsMovedIntoTheShownMenuKeepTheirEnabledState() {
+        let fresh = NSMenu()
+        MenuHub.populate(fresh, with: [member("MXSwipe", pid: 1)], canCheckForUpdates: true, target: nil)
+        let shown = NSMenu()
+        MenuHub.show(fresh, in: shown, whileOpen: false)
+        shown.update()
+        XCTAssertTrue(fresh.items.isEmpty)
+        XCTAssertEqual(shown.items.filter { !$0.isSeparatorItem }.map(\.isEnabled), [true, false, false, false, true])
+    }
+
     func testItemsAreEnabledAsDescribed() {
         let menu = NSMenu()
         MenuHub.populate(menu, with: [member("MXSwipe", pid: 1)], canCheckForUpdates: true, target: nil)

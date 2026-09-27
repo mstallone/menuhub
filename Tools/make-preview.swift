@@ -15,17 +15,16 @@ let size = NSSize(width: 460, height: 404)
 let barHeight: CGFloat = 24
 
 @MainActor func sampleMembers() -> [Member] {
-    let mxswipe = Member(pid: 1, name: "MXSwipe", version: "0.3.2", launched: Date(), yieldsIcon: false, checksForUpdates: true, revision: 0,
+    let mxswipe = Member(pid: 1, name: "MXSwipe", version: "0.3.4", launched: Date(), yieldsIcon: false, checksForUpdates: true, revision: 0,
                          isActive: true, symbol: nil, toolTip: nil,
                          header: MenuHeader(title: "MX Master 4", detail: .battery(83)), items: [
                              .action("Turn Gestures Off") {}, .separator, .action("Open at Login", isOn: true) {},
                          ])
-    let retinashot = Member(pid: 2, name: "RetinaShot", version: "1.5.0", launched: Date(), yieldsIcon: true, checksForUpdates: true, revision: 0,
+    let retinashot = Member(pid: 2, name: "RetinaShot", version: "1.5.2", launched: Date(), yieldsIcon: true, checksForUpdates: true, revision: 0,
                             isActive: true, symbol: nil, toolTip: nil, header: nil, items: [
                                 .action("Capture Selection", key: "4", modifiers: [.shift, .command]) {},
                                 .action("Capture Window") {}, .separator,
                                 .action("Show Floating Thumbnail", isOn: true) {}, .action("Open at Login", isOn: true) {},
-                                .info("Screen Recording Allowed", isOn: true), .alternate("Reset Screen Recording Permission…") {},
                                 .action("Reveal Screenshots in Finder") {},
                             ])
     return [mxswipe, retinashot]

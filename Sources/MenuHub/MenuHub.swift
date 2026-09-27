@@ -267,12 +267,17 @@ public final class MenuHub: NSObject {
         let canCheck = others.isEmpty ? updater?.canCheckForUpdates ?? false : updateRound == nil
         let fresh = NSMenu()
         Self.populate(fresh, with: sortedMembers, canCheckForUpdates: canCheck, target: self)
+        Self.show(fresh, in: menu, whileOpen: menuIsOpen)
+    }
+
+    /// Moves the rows built in `fresh` into `menu`. Replacing the items of an open menu makes AppKit measure it
+    /// again, and it jumps to another width, so an open menu with the same rows is updated in place instead.
+    static func show(_ fresh: NSMenu, in menu: NSMenu, whileOpen: Bool) {
         let items = fresh.items
         fresh.removeAllItems()
-        // Replacing the items of an open menu makes AppKit measure it again, and it jumps to another width. An
-        // open menu with the same rows is updated in place instead.
-        if menuIsOpen, menu.items.count == items.count, zip(menu.items, items).allSatisfy(Self.isSameKind) {
-            for (item, new) in zip(menu.items, items) { Self.update(item, to: new) }
+        menu.autoenablesItems = false  // as on `fresh`: items are enabled as described, not by AppKit
+        if whileOpen, menu.items.count == items.count, zip(menu.items, items).allSatisfy(isSameKind) {
+            for (item, new) in zip(menu.items, items) { update(item, to: new) }
         } else {
             menu.removeAllItems()
             items.forEach(menu.addItem)
