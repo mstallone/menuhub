@@ -22,6 +22,9 @@ public final class MenuHub: NSObject {
     private var mine: Member
     private var others: [Int32: Member] = [:]
     private var statusItem: NSStatusItem?
+    /// Redraws the icon while the member whose symbol is shown asks for the moving wave.
+    private var waveTimer: Timer?
+    private var wave = (active: true, description: "")
     private let menu = NSMenu()
     private var menuDelegate: MenuDelegate?
     private var menuIsOpen = false
@@ -51,7 +54,7 @@ public final class MenuHub: NSObject {
             name: info["CFBundleDisplayName"] as? String ?? info["CFBundleName"] as? String ?? ProcessInfo.processInfo.processName,
             version: info["CFBundleShortVersionString"] as? String ?? "",
             launched: NSRunningApplication.current.launchDate ?? Date(), yieldsIcon: yieldsIcon, checksForUpdates: updater != nil,
-            revision: 0, isActive: true, symbol: nil, toolTip: nil, header: nil, items: []
+            revision: 0, isActive: true, symbol: nil, toolTip: nil, animatesIcon: false, header: nil, items: []
         )
         super.init()
         menuDelegate = MenuDelegate(
@@ -95,6 +98,7 @@ public final class MenuHub: NSObject {
         var next = mine
         next.isActive = section.isActive
         next.symbol = section.symbol
+        next.animatesIcon = section.animatesIcon
         next.toolTip = section.toolTip
         next.header = section.header
         next.items = section.items
@@ -234,14 +238,65 @@ public final class MenuHub: NSObject {
         // An app's own symbol shows while it has the icon to itself, or while it asks to be seen.
         if let member = others.isEmpty ? mine : members.first(where: { $0.symbol != nil }) {
             let name = member.pid == mine.pid ? mine.symbol ?? symbol : member.symbol!
-            button.image = Self.icon(name, active: member.isActive, description: member.toolTip ?? member.name)
+            let description = member.toolTip ?? member.name
+            if member.animatesIcon && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                animateWave(active: member.isActive, description: description)
+            } else {
+                stopWave()
+                button.image = Self.icon(name, active: member.isActive, description: description)
+            }
             button.toolTip = member.toolTip
         } else {
+            stopWave()
             button.image = Self.icon("square.grid.2x2", active: members.contains(where: \.isActive),
                                      description: members.map(\.name).formatted(.list(type: .and)))
             button.toolTip = nil
         }
         if menuIsOpen { build() }
+    }
+
+    private func animateWave(active: Bool, description: String) {
+        wave = (active, description)
+        drawWave()
+        guard waveTimer == nil else { return }
+        waveTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 20, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.drawWave() }
+        }
+    }
+
+    private func drawWave() {
+        statusItem?.button?.image = Self.wave(at: Date.timeIntervalSinceReferenceDate, active: wave.active,
+                                              description: wave.description)
+    }
+
+    private func stopWave() {
+        waveTimer?.invalidate()
+        waveTimer = nil
+    }
+
+    /// Five rounded bars rising and falling out of step, like a voice level: the full height of the menu bar
+    /// icon, so it reads at a glance where a small symbol in a circle didn't.
+    static func wave(at time: TimeInterval, active: Bool, description: String) -> NSImage {
+        let size = NSSize(width: 18, height: 18)
+        let image = NSImage(size: size, flipped: false) { _ in
+            let barWidth: CGFloat = 2.2, gap: CGFloat = 1.5, count = 5
+            let total = CGFloat(count) * barWidth + CGFloat(count - 1) * gap
+            var x = (size.width - total) / 2
+            NSColor.black.withAlphaComponent(active ? 1 : 0.4).setFill()
+            for i in 0..<count {
+                // Each bar has its own rate and phase; the middle ones swing widest.
+                let swing = 0.5 + 0.5 * sin(time * (5.1 + 1.3 * Double(i % 3)) + Double(i) * 1.7)
+                let reach: CGFloat = i == 0 || i == count - 1 ? 0.55 : (i == 2 ? 1 : 0.8)
+                let h = max(barWidth, (0.22 + 0.78 * CGFloat(swing)) * reach * 14)
+                NSBezierPath(roundedRect: NSRect(x: x, y: (size.height - h) / 2, width: barWidth, height: h),
+                             xRadius: barWidth / 2, yRadius: barWidth / 2).fill()
+                x += barWidth + gap
+            }
+            return true
+        }
+        image.isTemplate = true
+        image.accessibilityDescription = description
+        return image
     }
 
     /// Full strength while active, faded otherwise. Drawn at partial opacity rather than with
@@ -437,11 +492,13 @@ struct Member: Codable, Equatable {
     var isActive: Bool
     var symbol: String?
     var toolTip: String?
+    var animatesIcon: Bool
     var header: MenuHeader?
     var items: [MenuItem]
 
     func hasSameContent(as other: Member) -> Bool {
-        (isActive, symbol, toolTip, header, items) == (other.isActive, other.symbol, other.toolTip, other.header, other.items)
+        (isActive, symbol, toolTip, animatesIcon, header, items)
+            == (other.isActive, other.symbol, other.toolTip, other.animatesIcon, other.header, other.items)
     }
 
     /// The app that shows the icon: the one running longest, so the icon stays put as others come and go,
@@ -452,20 +509,20 @@ struct Member: Codable, Equatable {
     }
 }
 
-/// Every message carries the sender's `pid`. The 4 is the protocol version: changing the messages or `Member`
+/// Every message carries the sender's `pid`. The 5 is the protocol version: changing the messages or `Member`
 /// changes it, so apps built against different versions keep their own menus instead of sharing one that
 /// misreads, or lacks, what the other offers.
 private extension Notification.Name {
     /// A member's description: `member`, JSON-encoded `Member`.
-    static let hubMember = Notification.Name("com.mattstallone.menuhub.4.member")
+    static let hubMember = Notification.Name("com.mattstallone.menuhub.5.member")
     /// Asks every member to send its description again.
-    static let hubRefresh = Notification.Name("com.mattstallone.menuhub.4.refresh")
+    static let hubRefresh = Notification.Name("com.mattstallone.menuhub.5.refresh")
     /// A chosen item, for `target`: `revision` and `item` (a path), or `quit`.
-    static let hubClick = Notification.Name("com.mattstallone.menuhub.4.click")
+    static let hubClick = Notification.Name("com.mattstallone.menuhub.5.click")
     /// The sender is quitting.
-    static let hubLeave = Notification.Name("com.mattstallone.menuhub.4.leave")
+    static let hubLeave = Notification.Name("com.mattstallone.menuhub.5.leave")
     /// Asks every app with an updater to check quietly: `check`, the round's ID.
-    static let hubCheckForUpdates = Notification.Name("com.mattstallone.menuhub.4.check-for-updates")
+    static let hubCheckForUpdates = Notification.Name("com.mattstallone.menuhub.5.check-for-updates")
     /// What an app found, for `target`: `check`, and `result`, a JSON-encoded `UpdateCheckResult`.
-    static let hubUpdateResult = Notification.Name("com.mattstallone.menuhub.4.update-result")
+    static let hubUpdateResult = Notification.Name("com.mattstallone.menuhub.5.update-result")
 }

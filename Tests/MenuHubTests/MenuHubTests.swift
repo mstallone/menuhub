@@ -5,7 +5,7 @@ final class MenuHubTests: XCTestCase {
     private func member(pid: Int32, launched: TimeInterval, yieldsIcon: Bool = false, items: [MenuItem] = []) -> Member {
         Member(pid: pid, name: "App \(pid)", version: "1.0", launched: Date(timeIntervalSinceReferenceDate: launched), yieldsIcon: yieldsIcon,
                checksForUpdates: false,
-               revision: 0, isActive: true, symbol: nil, toolTip: nil, header: MenuHeader(title: "Mouse", detail: .battery(83)),
+               revision: 0, isActive: true, symbol: nil, toolTip: nil, animatesIcon: false, header: MenuHeader(title: "Mouse", detail: .battery(83)),
                items: items)
     }
 
@@ -75,7 +75,7 @@ final class MenuHubTests: XCTestCase {
 final class MenuLayoutTests: XCTestCase {
     private func member(_ name: String, pid: Int32, header: MenuHeader? = nil, checksForUpdates: Bool = false) -> Member {
         Member(pid: pid, name: name, version: "1.2", launched: Date(), yieldsIcon: false, checksForUpdates: checksForUpdates, revision: 0,
-               isActive: true, symbol: nil, toolTip: nil, header: header,
+               isActive: true, symbol: nil, toolTip: nil, animatesIcon: false, header: header,
                items: [.action("Turn Gestures Off") {}, .separator, .info("Screen Recording Allowed", isOn: true),
                        .action("Open at Login", isEnabled: false) {}])
     }

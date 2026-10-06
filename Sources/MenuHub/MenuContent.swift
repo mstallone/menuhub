@@ -12,16 +12,20 @@ public struct MenuSection {
     public var symbol: String?
     /// The icon's tooltip while this app's symbol is shown.
     public var toolTip: String?
+    /// Draws the icon as a moving sound wave while set, for recording; `symbol` stays as its still form (Reduce
+    /// Motion, or a hub that can't animate).
+    public var animatesIcon: Bool
 
     /// `header` is optional when the app has the menu to itself. When menus are combined, a section
     /// without one is headed by the app's name.
     public init(header: MenuHeader? = nil, items: [MenuItem], isActive: Bool = true, symbol: String? = nil,
-                toolTip: String? = nil) {
+                toolTip: String? = nil, animatesIcon: Bool = false) {
         self.header = header
         self.items = items
         self.isActive = isActive
         self.symbol = symbol
         self.toolTip = toolTip
+        self.animatesIcon = animatesIcon
     }
 }
 
