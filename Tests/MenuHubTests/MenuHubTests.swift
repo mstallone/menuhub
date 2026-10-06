@@ -69,6 +69,17 @@ final class MenuHubTests: XCTestCase {
         XCTAssertEqual(Member.host(among: [yielding]), 1)
         XCTAssertEqual(Member.host(among: [yielding, member(pid: 3, launched: 5, yieldsIcon: true)]), 1)
     }
+
+    /// Apps on different MenuHub releases share one menu: a newer member's extra fields are ignored by an older
+    /// decoder, and an older member's message decodes with the newer fields at their defaults.
+    func testMembersDecodeAcrossReleases() throws {
+        var json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(member(pid: 1, launched: 0))) as! [String: Any]
+        json.removeValue(forKey: "animatesIcon")  // an app built before the field existed
+        json["someFutureField"] = 42               // and one built after a newer field
+        let decoded = try JSONDecoder().decode(Member.self, from: JSONSerialization.data(withJSONObject: json))
+        XCTAssertEqual(decoded.pid, 1)
+        XCTAssertFalse(decoded.animatesIcon)
+    }
 }
 
 @MainActor

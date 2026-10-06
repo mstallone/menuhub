@@ -498,6 +498,32 @@ struct Member: Codable, Equatable {
     var header: MenuHeader?
     var items: [MenuItem]
 
+    enum CodingKeys: String, CodingKey {
+        case pid, name, version, launched, yieldsIcon, checksForUpdates, revision, isActive, symbol, toolTip,
+             animatesIcon, header, items
+    }
+
+    init(pid: Int32, name: String, version: String, launched: Date, yieldsIcon: Bool, checksForUpdates: Bool,
+         revision: Int, isActive: Bool, symbol: String?, toolTip: String?, animatesIcon: Bool, header: MenuHeader?,
+         items: [MenuItem]) {
+        (self.pid, self.name, self.version, self.launched, self.yieldsIcon) = (pid, name, version, launched, yieldsIcon)
+        (self.checksForUpdates, self.revision, self.isActive) = (checksForUpdates, revision, isActive)
+        (self.symbol, self.toolTip, self.animatesIcon, self.header, self.items) = (symbol, toolTip, animatesIcon, header, items)
+    }
+
+    /// Fields added since protocol 4 began default when an older app's message lacks them.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            pid: c.decode(Int32.self, forKey: .pid), name: c.decode(String.self, forKey: .name),
+            version: c.decode(String.self, forKey: .version), launched: c.decode(Date.self, forKey: .launched),
+            yieldsIcon: c.decode(Bool.self, forKey: .yieldsIcon), checksForUpdates: c.decode(Bool.self, forKey: .checksForUpdates),
+            revision: c.decode(Int.self, forKey: .revision), isActive: c.decode(Bool.self, forKey: .isActive),
+            symbol: c.decodeIfPresent(String.self, forKey: .symbol), toolTip: c.decodeIfPresent(String.self, forKey: .toolTip),
+            animatesIcon: c.decodeIfPresent(Bool.self, forKey: .animatesIcon) ?? false,
+            header: c.decodeIfPresent(MenuHeader.self, forKey: .header), items: c.decode([MenuItem].self, forKey: .items))
+    }
+
     func hasSameContent(as other: Member) -> Bool {
         (isActive, symbol, toolTip, animatesIcon, header, items)
             == (other.isActive, other.symbol, other.toolTip, other.animatesIcon, other.header, other.items)
@@ -511,20 +537,22 @@ struct Member: Codable, Equatable {
     }
 }
 
-/// Every message carries the sender's `pid`. The 5 is the protocol version: changing the messages or `Member`
-/// changes it, so apps built against different versions keep their own menus instead of sharing one that
-/// misreads, or lacks, what the other offers.
+/// Every message carries the sender's `pid`. The 4 is the protocol version. Apps built against different MenuHub
+/// releases share one menu as long as it stays the same, so it changes only for an incompatible change: a field
+/// removed, renamed or given a new meaning. A new field is added without one: older apps ignore keys they don't know
+/// (JSON decoding skips them), and `Member` decodes a missing one to its default (an older host shows a still icon
+/// where a newer one animates it).
 private extension Notification.Name {
     /// A member's description: `member`, JSON-encoded `Member`.
-    static let hubMember = Notification.Name("com.mattstallone.menuhub.5.member")
+    static let hubMember = Notification.Name("com.mattstallone.menuhub.4.member")
     /// Asks every member to send its description again.
-    static let hubRefresh = Notification.Name("com.mattstallone.menuhub.5.refresh")
+    static let hubRefresh = Notification.Name("com.mattstallone.menuhub.4.refresh")
     /// A chosen item, for `target`: `revision` and `item` (a path), or `quit`.
-    static let hubClick = Notification.Name("com.mattstallone.menuhub.5.click")
+    static let hubClick = Notification.Name("com.mattstallone.menuhub.4.click")
     /// The sender is quitting.
-    static let hubLeave = Notification.Name("com.mattstallone.menuhub.5.leave")
+    static let hubLeave = Notification.Name("com.mattstallone.menuhub.4.leave")
     /// Asks every app with an updater to check quietly: `check`, the round's ID.
-    static let hubCheckForUpdates = Notification.Name("com.mattstallone.menuhub.5.check-for-updates")
+    static let hubCheckForUpdates = Notification.Name("com.mattstallone.menuhub.4.check-for-updates")
     /// What an app found, for `target`: `check`, and `result`, a JSON-encoded `UpdateCheckResult`.
-    static let hubUpdateResult = Notification.Name("com.mattstallone.menuhub.5.update-result")
+    static let hubUpdateResult = Notification.Name("com.mattstallone.menuhub.4.update-result")
 }
