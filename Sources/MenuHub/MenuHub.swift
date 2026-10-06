@@ -259,9 +259,11 @@ public final class MenuHub: NSObject {
         wave = (active, description)
         drawWave()
         guard waveTimer == nil else { return }
-        waveTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 20, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.drawWave() }
         }
+        RunLoop.main.add(timer, forMode: .common)  // keeps moving while the menu is open
+        waveTimer = timer
     }
 
     private func drawWave() {
@@ -274,23 +276,23 @@ public final class MenuHub: NSObject {
         waveTimer = nil
     }
 
-    /// Five rounded bars rising and falling out of step, like a voice level: the full height of the menu bar
-    /// icon, so it reads at a glance where a small symbol in a circle didn't.
+    /// The bars of SF Symbols' `waveform` at menu-bar size (15 × 16 pt): x of each 1 pt bar and its resting height.
+    /// The moving wave keeps exactly these positions, so it's the same width as the still icon it replaces.
+    private static let bars: [(x: CGFloat, height: CGFloat)] = [(1.9, 3.1), (3.9, 8.5), (6, 13.9), (8, 6.9), (10.1, 10.9), (12.1, 4.1)]
+
+    /// The `waveform` symbol's bars rising and falling out of step, like a voice level. Each bar swings on its own slow
+    /// cycle (two sines mixed, so it never looks mechanical) between a dot and a little past its resting height.
     static func wave(at time: TimeInterval, active: Bool, description: String) -> NSImage {
-        let size = NSSize(width: 18, height: 18)
+        let size = NSSize(width: 15, height: 16)
         let image = NSImage(size: size, flipped: false) { _ in
-            let barWidth: CGFloat = 2.2, gap: CGFloat = 1.5, count = 5
-            let total = CGFloat(count) * barWidth + CGFloat(count - 1) * gap
-            var x = (size.width - total) / 2
             NSColor.black.withAlphaComponent(active ? 1 : 0.4).setFill()
-            for i in 0..<count {
-                // Each bar has its own rate and phase; the middle ones swing widest.
-                let swing = 0.5 + 0.5 * sin(time * (5.1 + 1.3 * Double(i % 3)) + Double(i) * 1.7)
-                let reach: CGFloat = i == 0 || i == count - 1 ? 0.55 : (i == 2 ? 1 : 0.8)
-                let h = max(barWidth, (0.22 + 0.78 * CGFloat(swing)) * reach * 14)
-                NSBezierPath(roundedRect: NSRect(x: x, y: (size.height - h) / 2, width: barWidth, height: h),
-                             xRadius: barWidth / 2, yRadius: barWidth / 2).fill()
-                x += barWidth + gap
+            for (i, bar) in bars.enumerated() {
+                let k = Double(i)
+                let swing = 0.5 + 0.3 * sin(time * (6.3 + 1.9 * k.truncatingRemainder(dividingBy: 3)) + k * 2.1)
+                    + 0.2 * sin(time * (9.7 - 1.3 * k) + k * 0.9)
+                let height = max(1.5, min(14.5, CGFloat(swing) * (bar.height * 0.6 + 6)))
+                NSBezierPath(roundedRect: NSRect(x: bar.x, y: (size.height - height) / 2, width: 1, height: height),
+                             xRadius: 0.5, yRadius: 0.5).fill()
             }
             return true
         }
