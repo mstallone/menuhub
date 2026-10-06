@@ -504,8 +504,8 @@ struct Member: Codable, Equatable {
     }
 
     init(pid: Int32, name: String, version: String, launched: Date, yieldsIcon: Bool, checksForUpdates: Bool,
-         revision: Int, isActive: Bool, symbol: String?, toolTip: String?, animatesIcon: Bool, header: MenuHeader?,
-         items: [MenuItem]) {
+         revision: Int, isActive: Bool, symbol: String? = nil, toolTip: String? = nil, animatesIcon: Bool = false,
+         header: MenuHeader?, items: [MenuItem]) {
         (self.pid, self.name, self.version, self.launched, self.yieldsIcon) = (pid, name, version, launched, yieldsIcon)
         (self.checksForUpdates, self.revision, self.isActive) = (checksForUpdates, revision, isActive)
         (self.symbol, self.toolTip, self.animatesIcon, self.header, self.items) = (symbol, toolTip, animatesIcon, header, items)
