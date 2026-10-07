@@ -280,6 +280,10 @@ public final class MenuHub: NSObject {
     /// The moving wave keeps exactly these positions, so it's the same width as the still icon it replaces.
     private static let bars: [(x: CGFloat, height: CGFloat)] = [(1.9, 3.1), (3.9, 8.5), (6, 13.9), (8, 6.9), (10.1, 10.9), (12.1, 4.1)]
 
+    /// How fast the wave moves: at 0.4 a bar rises and falls about once every two seconds, a calm pulse (at 1 it
+    /// flickered).
+    private static let waveSpeed = 0.4
+
     /// The `waveform` symbol's bars rising and falling out of step, like a voice level. Each bar swings on its own slow
     /// cycle (two sines mixed, so it never looks mechanical) between a dot and a little past its resting height.
     static func wave(at time: TimeInterval, active: Bool, description: String) -> NSImage {
@@ -287,9 +291,9 @@ public final class MenuHub: NSObject {
         let image = NSImage(size: size, flipped: false) { _ in
             NSColor.black.withAlphaComponent(active ? 1 : 0.4).setFill()
             for (i, bar) in bars.enumerated() {
-                let k = Double(i)
-                let swing = 0.5 + 0.3 * sin(time * (6.3 + 1.9 * k.truncatingRemainder(dividingBy: 3)) + k * 2.1)
-                    + 0.2 * sin(time * (9.7 - 1.3 * k) + k * 0.9)
+                let k = Double(i), t = time * Self.waveSpeed
+                let swing = 0.5 + 0.3 * sin(t * (6.3 + 1.9 * k.truncatingRemainder(dividingBy: 3)) + k * 2.1)
+                    + 0.2 * sin(t * (9.7 - 1.3 * k) + k * 0.9)
                 let height = max(1.5, min(14.5, CGFloat(swing) * (bar.height * 0.6 + 6)))
                 NSBezierPath(roundedRect: NSRect(x: bar.x, y: (size.height - height) / 2, width: 1, height: height),
                              xRadius: 0.5, yRadius: 0.5).fill()
